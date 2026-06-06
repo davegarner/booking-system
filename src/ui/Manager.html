@@ -1,4 +1,6 @@
-<!-- Manager view shell. Panels are placeholders until later phases fill them. -->
+<!-- FullCalendar (pinned). Loads before JsManager runs (JsManager is injected at body end). -->
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+
 <section class="view" id="managerView">
   <div class="tabs" role="tablist">
     <button class="tab active" data-target="mgr-schedule">Schedule</button>
@@ -9,18 +11,45 @@
   </div>
 
   <div id="mgr-schedule" class="panel active">
-    <div class="card placeholder">
+    <div class="card">
       <h2>Schedule</h2>
-      <p>A combined calendar of all employees' availability and booked meetings, with conflict flags surfaced.</p>
-      <p><span class="soon">Coming in Phase 4</span></p>
+      <p>Everyone's booked meetings (coloured per employee). Click a meeting for details. Meetings outlined in amber clash with time off or a closure.</p>
+      <div id="scheduleCalendar"></div>
     </div>
   </div>
 
   <div id="mgr-book" class="panel">
-    <div class="card placeholder">
+    <div class="card">
       <h2>Book a meeting</h2>
-      <p>Pick an employee and an open slot, enter the client's details (name, email, phone, purpose, location/format, meeting type) and confirm — with double-booking and buffer checks.</p>
-      <p><span class="soon">Coming in Phase 4</span></p>
+      <p>Pick an employee and a date, check their free times, then enter the client's details and confirm. Double-booking and buffers are enforced on save.</p>
+      <div class="form-grid">
+        <label>Employee <select id="bkUser"></select></label>
+        <label>Date <input type="date" id="bkDate"></label>
+        <button class="btn ghost sm" id="bkShowBtn">Show free times</button>
+      </div>
+      <div id="bkSlots" class="preview"></div>
+      <hr style="border:none;border-top:1px solid var(--line);margin:16px 0;">
+      <div class="form-grid">
+        <label>Start <input type="time" id="bkStart" value="09:00"></label>
+        <label>Length (min) <input type="number" id="bkLen" class="input-sm" min="5" max="600" step="5" value="60"></label>
+        <label>Format
+          <select id="bkLoc">
+            <option value="IN_PERSON">In person</option>
+            <option value="PHONE">Phone</option>
+            <option value="VIDEO">Video</option>
+          </select>
+        </label>
+        <label>Meeting type <input type="text" id="bkType" placeholder="e.g. Consultation"></label>
+      </div>
+      <div class="form-grid">
+        <label>Client name <input type="text" id="bkName"></label>
+        <label>Client email <input type="email" id="bkEmail"></label>
+        <label>Client phone <input type="text" id="bkPhone"></label>
+      </div>
+      <div class="form-grid">
+        <label class="wide">Purpose / notes <input type="text" id="bkNotes" placeholder="optional"></label>
+        <button class="btn" id="bkBookBtn">Book meeting</button>
+      </div>
     </div>
   </div>
 
@@ -100,4 +129,15 @@
   </div>
 
   <div class="statusbar"><span id="connStatus">Connecting…</span></div>
+
+  <!-- Booking detail modal -->
+  <div id="bookingModal" class="overlay" hidden>
+    <div class="modal-card">
+      <h3 id="bmTitle">Meeting</h3>
+      <div id="bmBody"></div>
+      <div class="row" style="justify-content:flex-end; margin-bottom:0;">
+        <button class="btn ghost sm" id="bmClose">Close</button>
+      </div>
+    </div>
+  </div>
 </section>

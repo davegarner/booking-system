@@ -152,6 +152,28 @@
     background: #e6f4ea; color: var(--ok); border-radius: 999px; font-size: 13px;
   }
   .preview .none { color: var(--muted); font-style: italic; }
+  .slot.clickable { cursor: pointer; }
+  .slot.clickable:hover { background: #cde9d6; }
+
+  /* Modal */
+  .overlay {
+    position: fixed; inset: 0; background: rgba(32,33,36,.5);
+    display: flex; align-items: center; justify-content: center; z-index: 60; padding: 16px;
+  }
+  .overlay[hidden] { display: none; }
+  .modal-card {
+    background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 22px; width: 100%; max-width: 440px;
+  }
+  .modal-card h3 { margin: 0 0 12px; }
+  .kv { display: flex; justify-content: space-between; gap: 16px; padding: 5px 0; border-bottom: 1px solid #f0f1f3; }
+  .kv span { color: var(--muted); }
+  .kv b { text-align: right; }
+
+  /* FullCalendar flagged events */
+  .fc-event.flagged { outline: 2px solid var(--warn); outline-offset: -2px; }
+  #scheduleCalendar { margin-top: 12px; }
+  .fc { font-size: 13px; }
 
   @media (max-width: 600px) {
     .container { padding: 12px; }

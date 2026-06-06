@@ -21,7 +21,10 @@ function runAllTests() {
     test_expandRuleMonthlyNthDow_,
     test_freeRangesBookingBuffer_,
     test_freeRangesTimeOffAndClosure_,
-    test_freeRangesCancelledBookingReopens_
+    test_freeRangesCancelledBookingReopens_,
+    test_bookingFitsInFreeRange_,
+    test_bookingRespectsBufferGap_,
+    test_bookingExcludeSelfOnReschedule_
   ];
   let pass = 0; const failures = [];
   tests.forEach(function (t) {
@@ -140,4 +143,50 @@ function test_freeRangesCancelledBookingReopens_() {
   };
   const r = computeFreeRangesFromData(data, 'u', day.s, day.e, TEST_TZ);
   assertEq_(ivs_(r), ivs_([{ start: day.s, end: day.e }]), 'cancelled booking reopens time');
+}
+
+/* ------------------------------- booking validation ----------------------- */
+
+function baseDay_() {
+  return { s: ms_(2026, 6, 9, 9, 0), e: ms_(2026, 6, 9, 17, 0) };
+}
+
+function test_bookingFitsInFreeRange_() {
+  const day = baseDay_();
+  const data = { additions: [{ userId: 'u', startMs: day.s, endMs: day.e, active: true }] };
+  // 10:00–11:00 fits; 08:00–09:00 (before availability) does not.
+  let free = computeFreeRangesFromData(data, 'u', ms_(2026, 6, 9, 10, 0), ms_(2026, 6, 9, 11, 0), TEST_TZ);
+  assert_(meetingFitsFreeRanges_(free, ms_(2026, 6, 9, 10, 0), ms_(2026, 6, 9, 11, 0)), 'in-availability fits');
+  free = computeFreeRangesFromData(data, 'u', ms_(2026, 6, 9, 8, 0), ms_(2026, 6, 9, 9, 0), TEST_TZ);
+  assert_(!meetingFitsFreeRanges_(free, ms_(2026, 6, 9, 8, 0), ms_(2026, 6, 9, 9, 0)), 'before-availability rejected');
+}
+
+function test_bookingRespectsBufferGap_() {
+  // Existing booking 12:00–13:00, buffer 15 => blocked 11:45–13:15.
+  const day = baseDay_();
+  const data = {
+    additions: [{ userId: 'u', startMs: day.s, endMs: day.e, active: true }],
+    bookings: [{ userId: 'u', bookingId: 'B', status: BOOKING_STATUS.CONFIRMED, startMs: ms_(2026, 6, 9, 12, 0), endMs: ms_(2026, 6, 9, 13, 0), bufferBeforeMin: 15, bufferAfterMin: 15 }]
+  };
+  // New 11:00–11:45 ends exactly at the buffer edge -> OK (half-open).
+  let s = ms_(2026, 6, 9, 11, 0), e = ms_(2026, 6, 9, 11, 45);
+  let free = computeFreeRangesFromData(data, 'u', s, e, TEST_TZ);
+  assert_(meetingFitsFreeRanges_(free, s, e), 'meeting up to buffer edge fits');
+  // New 11:00–11:50 crosses into the buffer -> rejected.
+  s = ms_(2026, 6, 9, 11, 0); e = ms_(2026, 6, 9, 11, 50);
+  free = computeFreeRangesFromData(data, 'u', s, e, TEST_TZ);
+  assert_(!meetingFitsFreeRanges_(free, s, e), 'meeting into buffer rejected');
+}
+
+function test_bookingExcludeSelfOnReschedule_() {
+  // Rescheduling booking B to its own slot must succeed once B is excluded.
+  const day = baseDay_();
+  const B = { userId: 'u', bookingId: 'B', status: BOOKING_STATUS.CONFIRMED, startMs: ms_(2026, 6, 9, 12, 0), endMs: ms_(2026, 6, 9, 13, 0), bufferBeforeMin: 15, bufferAfterMin: 15 };
+  const data = { additions: [{ userId: 'u', startMs: day.s, endMs: day.e, active: true }], bookings: [B] };
+  const s = ms_(2026, 6, 9, 12, 0), e = ms_(2026, 6, 9, 13, 0);
+  let free = computeFreeRangesFromData(data, 'u', s, e, TEST_TZ);
+  assert_(!meetingFitsFreeRanges_(free, s, e), 'own slot blocked while B present');
+  const dataX = { additions: data.additions, bookings: data.bookings.filter(function (b) { return b.bookingId !== 'B'; }) };
+  free = computeFreeRangesFromData(dataX, 'u', s, e, TEST_TZ);
+  assert_(meetingFitsFreeRanges_(free, s, e), 'own slot free once B excluded');
 }

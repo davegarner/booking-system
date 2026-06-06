@@ -129,3 +129,128 @@
     loadConflicts();
   })();
 </script>
+
+<script>
+  /* JsManager (Schedule + Book) — the combined calendar and the booking form.
+     Requires FullCalendar (loaded in Manager.html) and JsCommon helpers. */
+  (function () {
+    var root = document.getElementById('managerView');
+    if (!root) return;
+    var calendar = null;
+
+    function locLabel(v) { return v === 'IN_PERSON' ? 'In person' : v === 'PHONE' ? 'Phone' : v === 'VIDEO' ? 'Video' : v || ''; }
+    function escapeHtml(s) {
+      return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+    // Events use naive business-tz times rendered as UTC, so format with UTC getters.
+    function fmtDateTime(d) { return d ? d.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) : ''; }
+    function fmtTime(d) { return d ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }) : ''; }
+
+    /* ----- schedule calendar ----- */
+    function initCalendar() {
+      var elc = $id('scheduleCalendar');
+      if (!elc || typeof FullCalendar === 'undefined') {
+        if (elc) elc.textContent = 'Calendar failed to load (network).';
+        return;
+      }
+      calendar = new FullCalendar.Calendar(elc, {
+        initialView: 'timeGridWeek',
+        timeZone: 'UTC',                 // events carry naive business-tz wall-clock
+        firstDay: 1,
+        nowIndicator: true,
+        slotMinTime: '07:00:00',
+        slotMaxTime: '21:00:00',
+        expandRows: true,
+        height: 700,
+        headerToolbar: { left: 'prev,next today', center: 'title', right: 'timeGridWeek,timeGridDay,dayGridMonth' },
+        events: function (info, success, failure) {
+          gcall('getCalendarBookings', info.startStr.slice(0, 10), info.endStr.slice(0, 10))
+            .then(success)
+            .catch(function (e) { failure(e); toast(errMsg(e), true); });
+        },
+        eventClick: function (arg) { showDetail(arg.event); }
+      });
+      calendar.render();
+    }
+
+    function showDetail(ev) {
+      var p = ev.extendedProps || {};
+      $id('bmTitle').textContent = p.employee + (p.clientName ? (' with ' + p.clientName) : '');
+      var rows = [['When', fmtDateTime(ev.start) + ' – ' + fmtTime(ev.end)]];
+      if (p.clientEmail) rows.push(['Client email', p.clientEmail]);
+      if (p.clientPhone) rows.push(['Client phone', p.clientPhone]);
+      if (p.meetingType) rows.push(['Type', p.meetingType]);
+      rows.push(['Format', locLabel(p.locationFormat)]);
+      if (p.purposeNotes) rows.push(['Notes', p.purposeNotes]);
+      if (p.flag === 'TIMEOFF_CONFLICT') rows.push(['⚠ Conflict', p.flagReason || 'Overlaps time off / closure']);
+      $id('bmBody').innerHTML = rows.map(function (r) {
+        return '<div class="kv"><span>' + escapeHtml(r[0]) + '</span><b>' + escapeHtml(r[1]) + '</b></div>';
+      }).join('') + '<p class="sub" style="margin-top:10px;">Reschedule and cancel arrive in Phase 5.</p>';
+      $id('bookingModal').hidden = false;
+    }
+    function closeModal() { $id('bookingModal').hidden = true; }
+    $id('bmClose').addEventListener('click', closeModal);
+    $id('bookingModal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
+
+    // Re-fit the calendar when its tab becomes visible (it may have rendered hidden).
+    root.addEventListener('click', function (e) {
+      var tab = e.target.closest ? e.target.closest('.tab') : null;
+      if (tab && tab.getAttribute('data-target') === 'mgr-schedule' && calendar) {
+        setTimeout(function () { calendar.updateSize(); }, 60);
+      }
+    });
+
+    /* ----- booking form ----- */
+    function fillBookUser() {
+      return gcall('getRoster').then(function (people) {
+        var sel = $id('bkUser'); sel.innerHTML = '';
+        people.forEach(function (pn) {
+          var o = document.createElement('option'); o.value = pn.userId; o.textContent = pn.displayName; sel.appendChild(o);
+        });
+      });
+    }
+
+    $id('bkDate').value = isoDate(new Date());
+
+    $id('bkShowBtn').addEventListener('click', function () {
+      var uid = $val('bkUser'), date = $val('bkDate');
+      if (!uid || !date) { toast('Choose an employee and date.', true); return; }
+      var out = $id('bkSlots'); out.textContent = 'Loading…';
+      busy(this, gcall('previewFreeRanges', uid, date, date)).then(function (ranges) {
+        out.innerHTML = '';
+        if (!ranges.length) { out.innerHTML = '<div class="none">No free time that day.</div>'; return; }
+        var hint = document.createElement('div'); hint.className = 'sub'; hint.textContent = 'Free times (click to fill the start):';
+        out.appendChild(hint);
+        ranges.forEach(function (r) {
+          var s = document.createElement('span'); s.className = 'slot clickable';
+          s.textContent = r.startText + '–' + r.endText;
+          s.addEventListener('click', function () {
+            $id('bkStart').value = r.startText;
+            var mins = Math.round((r.end - r.start) / 60000);
+            $id('bkLen').value = Math.min(mins, 60);
+          });
+          out.appendChild(s);
+        });
+      }).catch(function (e) { out.textContent = ''; toast(errMsg(e), true); });
+    });
+
+    $id('bkBookBtn').addEventListener('click', function () {
+      var payload = {
+        userId: $val('bkUser'), date: $val('bkDate'), startTime: $val('bkStart'), lengthMin: Number($val('bkLen')),
+        clientName: $val('bkName'), clientEmail: $val('bkEmail'), clientPhone: $val('bkPhone'),
+        meetingType: $val('bkType'), locationFormat: $val('bkLoc'), purposeNotes: $val('bkNotes')
+      };
+      busy(this, gcall('createBooking', payload)).then(function () {
+        toast('Meeting booked.');
+        ['bkName', 'bkEmail', 'bkPhone', 'bkType', 'bkNotes'].forEach(function (id) { $id(id).value = ''; });
+        $id('bkSlots').innerHTML = '';
+        if (calendar) calendar.refetchEvents();
+      }).catch(function (e) { toast(errMsg(e), true); });
+    });
+
+    fillBookUser().catch(function (e) { toast(errMsg(e), true); });
+    initCalendar();
+  })();
+</script>
