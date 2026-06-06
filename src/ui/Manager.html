@@ -1,0 +1,52 @@
+<!-- Manager view shell. Panels are placeholders until later phases fill them. -->
+<section class="view" id="managerView">
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-target="mgr-schedule">Schedule</button>
+    <button class="tab" data-target="mgr-book">Book a meeting</button>
+    <button class="tab" data-target="mgr-closures">Closures</button>
+    <button class="tab" data-target="mgr-team">Team</button>
+    <button class="tab" data-target="mgr-reports">Reports</button>
+  </div>
+
+  <div id="mgr-schedule" class="panel active">
+    <div class="card placeholder">
+      <h2>Schedule</h2>
+      <p>A combined calendar of all employees' availability and booked meetings, with conflict flags surfaced.</p>
+      <p><span class="soon">Coming in Phase 4</span></p>
+    </div>
+  </div>
+
+  <div id="mgr-book" class="panel">
+    <div class="card placeholder">
+      <h2>Book a meeting</h2>
+      <p>Pick an employee and an open slot, enter the client's details (name, email, phone, purpose, location/format, meeting type) and confirm — with double-booking and buffer checks.</p>
+      <p><span class="soon">Coming in Phase 4</span></p>
+    </div>
+  </div>
+
+  <div id="mgr-closures" class="panel">
+    <div class="card placeholder">
+      <h2>Company closures</h2>
+      <p>Block all employees at once for public holidays or team days, and manage individual time off.</p>
+      <p><span class="soon">Coming in Phase 3</span></p>
+    </div>
+  </div>
+
+  <div id="mgr-team" class="panel">
+    <div class="card placeholder">
+      <h2>Team</h2>
+      <p>Manage the roster of employees and their roles.</p>
+      <p><span class="soon">Roster editing UI planned; for now use addEmployee(...) in the editor.</span></p>
+    </div>
+  </div>
+
+  <div id="mgr-reports" class="panel">
+    <div class="card placeholder">
+      <h2>Reports</h2>
+      <p>Hours booked vs available, utilisation per employee, and a breakdown by meeting type.</p>
+      <p><span class="soon">Coming in Phase 7</span></p>
+    </div>
+  </div>
+
+  <div class="statusbar"><span id="connStatus">Connecting…</span></div>
+</section>

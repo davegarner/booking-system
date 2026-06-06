@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top"><!-- REQUIRED: lets links escape the Google Sites iframe sandbox -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <?!= include('ui/Styles'); ?>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">📅 <span id="brandName">FSW</span> Booking</div>
+      <div class="who">
+        <span id="whoName" class="who-name"></span>
+        <span id="whoRole" class="badge" hidden></span>
+      </div>
+    </header>
+
+    <main class="container">
+      <?!= include(viewFile); ?>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+
+    <script>
+      // Server-provided bootstrap (identity, role, timezone, notice). Never a secret.
+      window.FSW = <?!= bootstrapJson ?>;
+    </script>
+    <?!= include('ui/JsCommon'); ?>
+    <? if (viewFile === 'ui/Employee') { ?>
+      <?!= include('ui/JsEmployee'); ?>
+    <? } ?>
+  </body>
+</html>

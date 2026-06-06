@@ -1,0 +1,187 @@
+<script>
+  /* JsEmployee — wires the employee "My availability" screen to AvailabilityApi.
+     Loaded only on the employee view (see Index.html). Relies on JsCommon
+     (gcall, toast). */
+  (function () {
+    var root = document.getElementById('employeeView');
+    if (!root) return;
+    var UID = (window.FSW || {}).userId;
+
+    var DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    var NTH_LABELS = { '1': '1st', '2': '2nd', '3': '3rd', '4': '4th', '5': '5th', '-1': 'Last' };
+
+    function val(id) { return document.getElementById(id).value; }
+    function el(id) { return document.getElementById(id); }
+    function errMsg(e) { return (e && e.message) ? e.message : String(e); }
+    function isoDate(d) {
+      var m = d.getMonth() + 1, day = d.getDate();
+      return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day;
+    }
+    function fillDow(sel) {
+      DAY_NAMES.forEach(function (name, i) {
+        var o = document.createElement('option'); o.value = i; o.textContent = name; sel.appendChild(o);
+      });
+    }
+
+    /* ----- rendering ----- */
+    function describeRule(r) {
+      var t = r.startTimeLocal + '–' + r.endTimeLocal;
+      if (r.freq === 'WEEKLY') return 'Every ' + DAY_NAMES[r.dayOfWeek] + ', ' + t;
+      if (r.monthlyMode === 'DOM') return 'Day ' + r.dayOfMonth + ' of each month, ' + t;
+      return NTH_LABELS[String(r.nth)] + ' ' + DAY_NAMES[r.nthDayOfWeek] + ' of each month, ' + t;
+    }
+
+    function renderRules(rules) {
+      var ul = el('rulesList'); ul.innerHTML = '';
+      if (!rules.length) { ul.innerHTML = '<li class="empty">No recurring availability yet.</li>'; return; }
+      rules.forEach(function (r) {
+        var li = document.createElement('li');
+        var d = document.createElement('div'); d.className = 'desc'; d.textContent = describeRule(r);
+        var b = document.createElement('button');
+        b.className = 'btn danger sm'; b.textContent = 'Remove';
+        b.dataset.kind = 'rule'; b.dataset.id = r.ruleId;
+        li.appendChild(d); li.appendChild(b); ul.appendChild(li);
+      });
+    }
+
+    function renderSpans(listId, items, kind) {
+      var ul = el(listId); ul.innerHTML = '';
+      if (!items.length) { ul.innerHTML = '<li class="empty">None.</li>'; return; }
+      items.forEach(function (it) {
+        var li = document.createElement('li');
+        var wrap = document.createElement('div');
+        var d = document.createElement('div'); d.className = 'desc';
+        d.textContent = it.dateText + ' · ' + it.startText + '–' + it.endText;
+        wrap.appendChild(d);
+        if (it.note) { var s = document.createElement('div'); s.className = 'sub'; s.textContent = it.note; wrap.appendChild(s); }
+        var b = document.createElement('button');
+        b.className = 'btn danger sm'; b.textContent = 'Remove';
+        b.dataset.kind = kind; b.dataset.id = it.id;
+        li.appendChild(wrap); li.appendChild(b); ul.appendChild(li);
+      });
+    }
+
+    function renderPreview(ranges) {
+      var out = el('previewOut'); out.innerHTML = '';
+      if (!ranges.length) { out.innerHTML = '<div class="none">No free time in this range.</div>'; return; }
+      var order = [], byDay = {};
+      ranges.forEach(function (r) {
+        if (!byDay[r.dayText]) { byDay[r.dayText] = []; order.push(r.dayText); }
+        byDay[r.dayText].push(r);
+      });
+      order.forEach(function (day) {
+        var h = document.createElement('div'); h.className = 'day'; h.textContent = day; out.appendChild(h);
+        byDay[day].forEach(function (r) {
+          var s = document.createElement('span'); s.className = 'slot'; s.textContent = r.startText + '–' + r.endText; out.appendChild(s);
+        });
+      });
+    }
+
+    /* ----- data ----- */
+    var freqInitialised = false;
+    function load() {
+      gcall('getEmployeeAvailability', UID).then(function (data) {
+        el('bufferInput').value = data.user.bufferMin;
+        if (!freqInitialised) {
+          el('ruleFreq').value = (data.user.recurrenceMode === 'MONTHLY') ? 'MONTHLY' : 'WEEKLY';
+          freqInitialised = true; syncRuleFields();
+        }
+        renderRules(data.rules);
+        renderSpans('additionsList', data.additions, 'addition');
+        renderSpans('exceptionsList', data.exceptions, 'exception');
+      }).catch(function (err) { toast(errMsg(err), true); });
+    }
+
+    /* ----- rule form ----- */
+    function toggle(id, show) { el(id).classList.toggle('hidden', !show); }
+    function syncRuleFields() {
+      var weekly = el('ruleFreq').value === 'WEEKLY';
+      var mode = el('ruleMonthlyMode').value;
+      toggle('fldDow', weekly);
+      toggle('fldMonthlyMode', !weekly);
+      toggle('fldDom', !weekly && mode === 'DOM');
+      toggle('fldNth', !weekly && mode === 'NTH_DOW');
+      toggle('fldNthDow', !weekly && mode === 'NTH_DOW');
+    }
+    function collectRule() {
+      var freq = val('ruleFreq');
+      var r = { freq: freq, startTimeLocal: val('ruleStart'), endTimeLocal: val('ruleEnd') };
+      if (freq === 'WEEKLY') {
+        r.dayOfWeek = Number(val('ruleDow'));
+      } else {
+        r.monthlyMode = val('ruleMonthlyMode');
+        if (r.monthlyMode === 'DOM') r.dayOfMonth = Number(val('ruleDom'));
+        else { r.nth = Number(val('ruleNth')); r.nthDayOfWeek = Number(val('ruleNthDow')); }
+      }
+      return r;
+    }
+
+    function busy(btn, p) {
+      btn.disabled = true;
+      return p.then(function (r) { btn.disabled = false; return r; },
+                    function (e) { btn.disabled = false; throw e; });
+    }
+
+    /* ----- wire up ----- */
+    fillDow(el('ruleDow'));
+    fillDow(el('ruleNthDow'));
+    var today = new Date();
+    el('addDate').value = isoDate(today);
+    el('excDate').value = isoDate(today);
+    el('prevFrom').value = isoDate(today);
+    el('prevTo').value = isoDate(new Date(today.getTime() + 14 * 86400000));
+
+    el('ruleFreq').addEventListener('change', syncRuleFields);
+    el('ruleMonthlyMode').addEventListener('change', syncRuleFields);
+    syncRuleFields();
+
+    el('saveBufferBtn').addEventListener('click', function () {
+      busy(this, gcall('setBuffer', UID, Number(val('bufferInput'))))
+        .then(function () { toast('Buffer saved.'); })
+        .catch(function (err) { toast(errMsg(err), true); });
+    });
+
+    el('addRuleBtn').addEventListener('click', function () {
+      busy(this, gcall('saveRule', UID, collectRule()))
+        .then(function () { toast('Recurring availability added.'); el('ruleAdder').open = false; load(); })
+        .catch(function (err) { toast(errMsg(err), true); });
+    });
+
+    el('addOneOffBtn').addEventListener('click', function () {
+      var p = { date: val('addDate'), startTime: val('addStart'), endTime: val('addEnd'), note: val('addNote') };
+      if (!p.date) { toast('Choose a date.', true); return; }
+      busy(this, gcall('addOneOff', UID, p))
+        .then(function () { toast('One-off slot added.'); el('addNote').value = ''; load(); })
+        .catch(function (err) { toast(errMsg(err), true); });
+    });
+
+    el('addExcBtn').addEventListener('click', function () {
+      var p = { date: val('excDate'), startTime: val('excStart'), endTime: val('excEnd'), note: val('excNote') };
+      if (!p.date) { toast('Choose a date.', true); return; }
+      busy(this, gcall('addException', UID, p))
+        .then(function () { toast('Exception added.'); el('excNote').value = ''; load(); })
+        .catch(function (err) { toast(errMsg(err), true); });
+    });
+
+    el('previewBtn').addEventListener('click', function () {
+      var out = el('previewOut'); out.textContent = 'Loading…';
+      busy(this, gcall('previewFreeRanges', UID, val('prevFrom'), val('prevTo')))
+        .then(renderPreview)
+        .catch(function (err) { out.textContent = ''; toast(errMsg(err), true); });
+    });
+
+    // Delete (event delegation for all "Remove" buttons in this view).
+    root.addEventListener('click', function (e) {
+      var btn = e.target.closest ? e.target.closest('.btn.danger') : null;
+      if (!btn) return;
+      var kind = btn.dataset.kind, id = btn.dataset.id;
+      if (!window.confirm('Remove this entry?')) return;
+      var fn = kind === 'rule' ? 'deleteRule' : kind === 'addition' ? 'deleteOneOff' : 'deleteException';
+      busy(btn, gcall(fn, UID, id))
+        .then(function () { toast('Removed.'); load(); })
+        .catch(function (err) { toast(errMsg(err), true); });
+    });
+
+    load();
+  })();
+</script>

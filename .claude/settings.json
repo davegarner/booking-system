@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(command -v pandoc)",
+      "Bash(pandoc --version)",
+      "Bash(command -v python3)",
+      "Bash(python3 -c \"import docx; print\\('python-docx', docx.__version__\\)\")",
+      "Bash(command -v soffice)",
+      "Bash(command -v libreoffice)",
+      "Bash(command -v textutil)",
+      "Bash(chmod +x tools/build-docs.sh)",
+      "Bash(python3 tools/md2docx.py docs/Phase-0-Foundation.md)",
+      "Bash(python3 -)",
+      "Bash(python3 tools/md2docx.py docs/Phase-1-Auth-and-Shell.md)",
+      "Bash(python3 tools/md2docx.py docs/Phase-2-Employee-Availability.md)"
+    ]
+  }
+}

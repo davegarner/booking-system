@@ -1,0 +1,88 @@
+<script>
+  /* JsCommon — shared client helpers and shell wiring. Loaded on every page. */
+
+  /** Promise wrapper around google.script.run. Usage: gcall('getServerInfo', arg1, ...) */
+  function gcall(method) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function (resolve, reject) {
+      var runner = google.script.run
+        .withSuccessHandler(resolve)
+        .withFailureHandler(reject);
+      runner[method].apply(runner, args);
+    });
+  }
+
+  /** Brief toast message. */
+  function toast(msg, isError) {
+    var el = document.getElementById('toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.toggle('err', !!isError);
+    el.hidden = false;
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { el.hidden = true; }, 4000);
+  }
+
+  /** Scoped tab switching: a .tab toggles the .panel matching its data-target within its .view. */
+  function initTabs() {
+    document.addEventListener('click', function (e) {
+      var tab = e.target.closest ? e.target.closest('.tab') : null;
+      if (!tab) return;
+      var view = tab.closest('.view');
+      if (!view) return;
+      var targetId = tab.getAttribute('data-target');
+      view.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('active', t === tab); });
+      view.querySelectorAll('.panel').forEach(function (p) { p.classList.toggle('active', p.id === targetId); });
+    });
+  }
+
+  /** Populate the top bar from bootstrap. */
+  function initChrome() {
+    var f = window.FSW || {};
+    var brand = document.getElementById('brandName');
+    if (brand && f.companyName) brand.textContent = f.companyName;
+
+    var name = document.getElementById('whoName');
+    if (name) name.textContent = f.displayName || f.email || '';
+
+    var role = document.getElementById('whoRole');
+    if (role) {
+      if (f.role) {
+        role.textContent = (f.role === 'manager') ? 'Manager' : 'Employee';
+        role.classList.add(f.role);
+      } else {
+        role.textContent = 'No access';
+        role.classList.add('none');
+      }
+      role.hidden = false;
+    }
+
+    if (f.notice) {
+      var nt = document.getElementById('noticeTitle');
+      var nb = document.getElementById('noticeBody');
+      if (nt) nt.textContent = f.notice.title;
+      if (nb) nb.textContent = f.notice.body;
+    }
+  }
+
+  /** Confirm the client↔server round-trip and show identity + server time. */
+  function checkConnection() {
+    var f = window.FSW || {};
+    if (f.state !== 'OK') return;
+    var cs = document.getElementById('connStatus');
+    if (cs) cs.textContent = 'Connecting…';
+    gcall('getServerInfo').then(function (info) {
+      if (!cs) return;
+      cs.innerHTML = '<span class="ok">✓ Connected</span> — signed in as ' + info.email +
+        ' (' + (info.role || 'no role') + '). Server time: ' + info.serverTimeText + ' · ' + info.tz + '.';
+    }).catch(function (err) {
+      if (cs) cs.innerHTML = '<span class="err">⚠ Connection error</span>: ' + (err && err.message ? err.message : err);
+    });
+  }
+
+  (function init() {
+    initChrome();
+    initTabs();
+    checkConnection();
+  })();
+</script>

@@ -1,0 +1,9 @@
+node_modules/
+.DS_Store
+*.log
+npm-debug.log*
+
+# .clasp.json holds your scriptId (not a secret, but machine-specific).
+# It is created by `clasp create`/`clasp clone`. Commit it if your team shares
+# one script; ignore it if each developer clones their own. Default: ignore.
+.clasp.json

@@ -1,0 +1,11 @@
+# Only the contents of src/ are pushed to Apps Script.
+# Everything matched here is kept OUT of `clasp push`.
+**/node_modules/**
+**/.git/**
+package.json
+package-lock.json
+*.md
+.gitignore
+.claspignore
+.clasp.json.example
+plans/**

@@ -1,0 +1,116 @@
+# FSW Booking System
+
+An internal client-booking system for a ~10-person team, built as a **Google Apps Script web app**
+backed by **Google Sheets** and embedded in **Google Sites**. Employees set their own availability;
+the manager books client meetings into it. No third-party services, runs entirely inside Google Workspace.
+
+See the full design in `plans/` (or the approved implementation plan) for the rationale behind every decision.
+
+## Status
+
+Built so far (Phase 0 + foundation):
+
+| Module | Purpose |
+|---|---|
+| `src/Schema.gs` | Tab names, column order, enums — the data-model source of truth |
+| `src/Config.gs` | Script-property `SHEET_ID` + editable `Config` tab settings (timezone, buffers, reminder lead, …) |
+| `src/TimeUtil.gs` | DST-safe wall-clock ⇄ epoch-ms conversion (the correctness-critical helper) |
+| `src/SheetDAL.gs` | All Sheet I/O: bulk read, append, update-by-id, caching, `withScriptLock` |
+| `src/AuditLog.gs` | Append-only history of every mutating action |
+| `src/AvailabilityEngine.gs` | `computeFreeRanges` + interval algebra — derives bookable time on the fly |
+| `src/Setup.gs` | `setup()` bootstrap: creates the data Sheet, tabs, formats, seeds Config + manager |
+| `src/Tests.gs` | `runAllTests()` — pure unit tests for the engine + timezone logic |
+
+Still to come (later phases): auth & app shell, employee availability UI, time off/closures, manager
+booking, reschedule/cancel, email notifications + reminders, reporting dashboard, Sites embedding.
+
+## Data model (Google Sheet tabs)
+
+`Config`, `Users`, `AvailabilityRules`, `AvailabilityAdditions`, `AvailabilityExceptions`, `TimeOff`,
+`Closures`, `Bookings`, `AuditLog`. All instants are stored as **UTC epoch-millisecond integers**; all
+recurring times are wall-clock in the one business timezone (`Config.timeZone`, default `Europe/London`).
+
+## First-time setup
+
+### Prerequisites
+1. Install **Node.js** (LTS) and **clasp**:
+   ```bash
+   npm install -g @google/clasp
+   # or, in this repo:  npm install   (clasp is a devDependency)
+   ```
+2. Enable the Apps Script API for your account: visit
+   <https://script.google.com/home/usersettings> → turn **Google Apps Script API** **On**.
+3. Sign in with the Workspace account that will **own** the project (this identity runs the app and
+   sends all notification email):
+   ```bash
+   clasp login
+   ```
+
+### Create the script project
+From the repo root:
+```bash
+clasp create --type webapp --title "FSW Booking" --rootDir src
+```
+This writes `.clasp.json` (your `scriptId`) and links the `src/` folder. Then push the code:
+```bash
+clasp push
+```
+
+> If you already have a script, run `clasp clone <scriptId> --rootDir src` instead, then `clasp push`.
+
+### Initialise the data spreadsheet
+1. Open the script editor: `clasp open`.
+2. Run the **`setup`** function once (select it in the editor toolbar → Run). Approve the OAuth scopes
+   when prompted (this is the one-time owner authorization).
+3. `setup()` creates a spreadsheet named **"FSW Booking System — Data"**, builds every tab, seeds the
+   `Config` defaults, and registers you as the first **manager**. The spreadsheet URL is printed to the
+   execution log (View → Logs).
+
+### Add your employees
+Run from the editor (or call via `clasp run`):
+```js
+addEmployee('alex@yourdomain.com', 'Alex Smith');
+addEmployee('sam@yourdomain.com',  'Sam Jones', { bufferMin: 30, recurrenceMode: 'MONTHLY' });
+```
+`role` defaults to `employee`. Pass `{ role: 'manager' }` to add another manager.
+
+### Confirm the timezone
+The default business timezone is `Europe/London`. To change it, edit the `timeZone` row in the `Config`
+tab (use an IANA name, e.g. `Europe/Dublin`, `America/New_York`) **and** set the same zone on the script
+project (`appsscript.json` → `timeZone`) and the data spreadsheet (File → Settings → Time zone).
+
+## Verify the foundation
+
+In the script editor, run **`runAllTests`**. It exercises the timezone conversions and the availability
+engine (recurring expansion for weekly + monthly, buffer/time-off/closure subtraction, cancelled-booking
+reopen) with in-memory data — no spreadsheet required. Check the log for `N/N passed`.
+
+## Deployment & Google Sites embedding
+
+> Documented in full in **Phase 8**. In brief: deploy as a Web app with **Execute as: Me** and
+> **Who has access: Anyone within `<your domain>`**, embed the `/exec` URL in your Google Site via
+> **Insert → Embed → By URL**, and provide an "Open in new tab" fallback link.
+
+## Documentation
+
+Each build phase ships a comprehensive write-up in `docs/`, in both Markdown and Word formats (see
+[docs/README.md](docs/README.md)). Rebuild the `.docx` files from their `.md` sources with
+`tools/build-docs.sh`.
+
+## Project layout
+
+```
+FSW-Booking-System/
+  package.json        # clasp scripts + devDependencies
+  .claspignore        # only src/ is pushed
+  .clasp.json         # scriptId (generated by `clasp create`; git-ignored by default)
+  README.md
+  docs/               # per-phase documentation (.md sources + generated .docx)
+  tools/              # md2docx.py + build-docs.sh (NOT pushed to Apps Script)
+  src/
+    appsscript.json   # manifest: timezone, V8, webapp{access:DOMAIN, executeAs:USER_DEPLOYING}, scopes
+    Schema.gs  Config.gs  TimeUtil.gs  SheetDAL.gs  AuditLog.gs
+    AvailabilityEngine.gs  Setup.gs  Tests.gs
+    # (added in later phases) Code.gs  Auth.gs  AvailabilityApi.gs  BookingApi.gs
+    #                         TimeOffApi.gs  Notifications.gs  Reminders.gs  Reporting.gs  ui/*.html
+```

@@ -1,0 +1,133 @@
+<!-- Employee view. "My availability" is built in Phase 2; other panels arrive later. -->
+<section class="view" id="employeeView">
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-target="emp-availability">My availability</button>
+    <button class="tab" data-target="emp-calendar">My calendar</button>
+    <button class="tab" data-target="emp-timeoff">Time off</button>
+  </div>
+
+  <!-- ============================ MY AVAILABILITY ======================== -->
+  <div id="emp-availability" class="panel active">
+
+    <!-- Buffer -->
+    <div class="card">
+      <h2>Buffer between meetings</h2>
+      <p>A gap automatically kept clear before and after each of your meetings (for notes, travel, a breather).</p>
+      <div class="row">
+        <input type="number" id="bufferInput" class="input-sm" min="0" max="600" step="5">
+        <span>minutes</span>
+        <button class="btn sm" id="saveBufferBtn">Save</button>
+      </div>
+    </div>
+
+    <!-- Recurring availability -->
+    <div class="card">
+      <h2>Recurring availability</h2>
+      <p>Repeating times you're free for clients. Add as many patterns as you like.</p>
+      <ul id="rulesList" class="list"></ul>
+      <details class="adder" id="ruleAdder">
+        <summary class="btn ghost sm">+ Add recurring availability</summary>
+        <div class="form-grid">
+          <label>Repeats
+            <select id="ruleFreq">
+              <option value="WEEKLY">Weekly</option>
+              <option value="MONTHLY">Monthly</option>
+            </select>
+          </label>
+          <label class="fld-weekly" id="fldDow">Day
+            <select id="ruleDow"></select>
+          </label>
+          <label class="fld-monthly hidden" id="fldMonthlyMode">Pattern
+            <select id="ruleMonthlyMode">
+              <option value="DOM">Day of month</option>
+              <option value="NTH_DOW">Nth weekday</option>
+            </select>
+          </label>
+          <label class="fld-dom hidden" id="fldDom">Day of month
+            <input type="number" id="ruleDom" min="1" max="31" value="1">
+          </label>
+          <label class="fld-nth hidden" id="fldNth">Occurrence
+            <select id="ruleNth">
+              <option value="1">1st</option><option value="2">2nd</option>
+              <option value="3">3rd</option><option value="4">4th</option>
+              <option value="5">5th</option><option value="-1">Last</option>
+            </select>
+          </label>
+          <label class="fld-nth hidden" id="fldNthDow">Weekday
+            <select id="ruleNthDow"></select>
+          </label>
+          <label>From <input type="time" id="ruleStart" value="09:00"></label>
+          <label>To <input type="time" id="ruleEnd" value="17:00"></label>
+          <button class="btn sm" id="addRuleBtn">Add</button>
+        </div>
+      </details>
+    </div>
+
+    <!-- One-off availability -->
+    <div class="card">
+      <h2>One-off availability</h2>
+      <p>Extra free time on a specific date, on top of your recurring pattern.</p>
+      <ul id="additionsList" class="list"></ul>
+      <details class="adder">
+        <summary class="btn ghost sm">+ Add one-off slot</summary>
+        <div class="form-grid">
+          <label>Date <input type="date" id="addDate"></label>
+          <label>From <input type="time" id="addStart" value="09:00"></label>
+          <label>To <input type="time" id="addEnd" value="12:00"></label>
+          <label class="wide">Note <input type="text" id="addNote" placeholder="optional"></label>
+          <button class="btn sm" id="addOneOffBtn">Add</button>
+        </div>
+      </details>
+    </div>
+
+    <!-- Exceptions -->
+    <div class="card">
+      <h2>Exceptions</h2>
+      <p>Remove part of your normal availability on a specific date — e.g. "not free this Monday morning".</p>
+      <ul id="exceptionsList" class="list"></ul>
+      <details class="adder">
+        <summary class="btn ghost sm">+ Add exception</summary>
+        <div class="form-grid">
+          <label>Date <input type="date" id="excDate"></label>
+          <label>From <input type="time" id="excStart" value="09:00"></label>
+          <label>To <input type="time" id="excEnd" value="12:00"></label>
+          <label class="wide">Note <input type="text" id="excNote" placeholder="optional"></label>
+          <button class="btn sm" id="addExcBtn">Add</button>
+        </div>
+      </details>
+    </div>
+
+    <!-- Preview -->
+    <div class="card">
+      <h2>Preview — what you're offering</h2>
+      <p>Your bookable free time after subtracting meetings, time off, closures and buffers.</p>
+      <div class="row">
+        <label>From <input type="date" id="prevFrom"></label>
+        <label>To <input type="date" id="prevTo"></label>
+        <button class="btn sm" id="previewBtn">Show</button>
+      </div>
+      <div id="previewOut" class="preview"></div>
+    </div>
+
+  </div>
+
+  <!-- ============================ MY CALENDAR ============================ -->
+  <div id="emp-calendar" class="panel">
+    <div class="card placeholder">
+      <h2>My calendar</h2>
+      <p>Your upcoming client meetings will appear here, and you'll be able to reschedule or cancel your own.</p>
+      <p><span class="soon">Coming in Phases 4–5</span></p>
+    </div>
+  </div>
+
+  <!-- ============================ TIME OFF =============================== -->
+  <div id="emp-timeoff" class="panel">
+    <div class="card placeholder">
+      <h2>Time off</h2>
+      <p>Mark holidays, sick days, or ad-hoc unavailable blocks that override your normal availability.</p>
+      <p><span class="soon">Coming in Phase 3</span></p>
+    </div>
+  </div>
+
+  <div class="statusbar"><span id="connStatus">Connecting…</span></div>
+</section>
