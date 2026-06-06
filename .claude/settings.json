@@ -20,7 +20,13 @@
       "Bash(python3 tools/md2docx.py docs/Phase-6-Notifications.md)",
       "Bash(python3 tools/md2docx.py docs/Phase-7-Reporting.md)",
       "Bash(python3 tools/md2docx.py docs/Phase-8-Deployment.md)",
-      "Bash(tools/build-docs.sh)"
+      "Bash(tools/build-docs.sh)",
+      "Bash(sed -n '1,120p' /Users/david/Repo/FSW-Booking-System/src/ui/JsCommon.html)",
+      "Bash(sed -n '1,60p' /Users/david/Repo/FSW-Booking-System/src/AvailabilityApi.gs)",
+      "Bash(sed -n '185,189p' Developer-Guide.md)",
+      "Bash(sed -n '168,172p' Employee-Guide.md)",
+      "Bash(cd /Users/david/Repo/FSW-Booking-System/wiki *)",
+      "Read(//Users/david/Repo/src/**)"
     ]
   }
 }
