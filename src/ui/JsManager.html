@@ -339,3 +339,24 @@
     run();
   })();
 </script>
+
+<script>
+  /* JsManager (Team) — read-only roster list. */
+  (function () {
+    var root = document.getElementById('managerView');
+    if (!root) return;
+    gcall('getRoster').then(function (people) {
+      var ul = $id('teamList'); if (!ul) return; ul.innerHTML = '';
+      if (!people.length) { ul.innerHTML = '<li class="empty">No team members yet.</li>'; return; }
+      people.forEach(function (p) {
+        var li = document.createElement('li');
+        var d = document.createElement('div'); d.className = 'desc';
+        d.textContent = p.displayName + ' — ' + p.email + ' · buffer ' + p.bufferMin + ' min';
+        var badge = document.createElement('span');
+        badge.className = 'badge ' + (p.role === 'manager' ? 'manager' : 'employee');
+        badge.textContent = p.role === 'manager' ? 'Manager' : 'Employee';
+        li.appendChild(d); li.appendChild(badge); ul.appendChild(li);
+      });
+    }).catch(function (e) { toast(errMsg(e), true); });
+  })();
+</script>

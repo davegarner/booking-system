@@ -15,7 +15,7 @@ Comprehensive, review-oriented documentation. Every build phase ships a document
 | 5 | [Phase 5 — Reschedule & cancel](Phase-5-Reschedule-and-Cancel.md) · `Phase-5-Reschedule-and-Cancel.docx` | Complete |
 | 6 | [Phase 6 — Notifications & reminders](Phase-6-Notifications.md) · `Phase-6-Notifications.docx` | Complete |
 | 7 | [Phase 7 — Reporting dashboard](Phase-7-Reporting.md) · `Phase-7-Reporting.docx` | Complete |
-| 8 | Deployment & Google Sites embedding | Pending |
+| 8 | [Phase 8 — Deployment & Sites embedding](Phase-8-Deployment.md) · `Phase-8-Deployment.docx` | Complete |
 
 ## Regenerating the Word versions
 

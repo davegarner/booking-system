@@ -6392,3 +6392,320 @@ Docs — docs/Phase-7-Reporting.md + .docx.
 
 Next — Phase 8 (final)
 Deployment & Google Sites embedding + UAT: the full step-by-step deploy recipe (execute-as-me + domain access, pin the deployment, embed /exec in your Site with the new-tab fallback), and a complete acceptance-test matrix covering every feature end to end. This closes out v1. Shall I proceed to Phase 8?
+
+
+
+
+
+proceed
+Proceeding to Phase 8 — deployment, Google Sites embedding, and UAT. First a small polish: turn the manager's last placeholder (the Team tab) into a read-only roster view so v1 has no stubs left.
+
+Edit Manager.html
+Modified
+Edit JsManager.html
+Added 21 lines
+Now the full deployment recipe in the README (replacing the brief placeholder):
+
+Edit README.md
+Added 13 lines
+Now refreshing the README Status section to reflect the completed v1:
+
+Edit README.md
+Removed 1 line
+Edit README.md
+Added 2 lines
+Now the comprehensive Phase 8 deployment + acceptance document:
+
+Write Phase-8-Deployment.md
+186 lines
+# FSW Booking System — Phase 8: Deployment, Google Sites Embedding & Acceptance
+
+**Document version:** 1.0
+**Date:** 2026-06-06
+**Phase status:** Complete (v1)
+**Audience:** Project owner / administrator (and future developers)
+
+---
+
+## 1. Purpose of this document
+
+This is the final build record. It covers how to put the system live — deploying the web app, embedding it in
+your Google Site — and a complete **user-acceptance test (UAT) matrix** that exercises every feature end to
+end. With this phase the v1 system is complete.
+
+---
+
+## 2. Prerequisites (recap)
+
+- A Google Workspace **owner account** that will own the script and the data spreadsheet (it runs the app and
+  sends all email).
+- Node + clasp installed; the Apps Script API enabled; `clasp login` done as the owner (see the project
+  `README.md`).
+- The code pushed (`clasp push`) and `setup()` run once (creates the data spreadsheet, seeds Config and the
+  first manager, installs the reminder trigger).
+- Staff added with `addEmployee("email@domain", "Full Name")`.
+- The business **timezone** confirmed in the `Config` tab (and matched on the script + spreadsheet).
+
+---
+
+## 3. Deploying the web app
+
+1. In the Apps Script editor: **Deploy → New deployment → select type Web app**
+   (or from the CLI: `clasp deploy --description "v1"`).
+2. Set:
+
+   | Setting | Value | Why |
+   |---|---|---|
+   | **Execute as** | **Me** (the owner) | One-time owner authorization; the data Sheet is never shared with staff; the app still sees each visitor's identity via the same-domain rule |
+   | **Who has access** | **Anyone within `<your domain>`** | Restricts to your Workspace; required for identity to resolve and for clean iframe embedding |
+
+3. Authorize the requested scopes once (Sheets, send-mail, user email, script triggers).
+4. Copy the **Web app URL ending in `/exec`** (use `/exec`, never `/dev` — `/dev` only works for editors and
+   serves unsaved code).
+
+> **Keep the URL stable.** Re-deploy to the *same* deployment after code changes so the URL doesn't change and
+> your Site embed keeps working: `clasp deployments` to list, then
+> `clasp deploy --deploymentId <id> --description "v1.1"` to update in place. (In the editor: **Manage
+> deployments → edit (pencil) → New version**.)
+
+---
+
+## 4. Embedding in Google Sites
+
+1. Edit your Google Site → **Insert → Embed → By URL** → paste the **`/exec`** URL → Insert.
+2. Size the embed block generously; the app manages its own scrolling.
+3. **Publish** the Site to an audience **restricted to your Workspace domain** (so it matches the app's access).
+4. Add a visible **fallback link/button** elsewhere on the page: *"Open Booking System in a new tab"* pointing
+   at the same `/exec` URL, `target="_blank"`.
+
+**Why the fallback?** The app already sends the two flags needed for framing (`ALLOWALL`, and
+`<base target="_top">` so links can escape the sandbox). The embed works for normal signed-in users. But a
+minority of browsers that block all third-party cookies/iframes may show a blank or sign-in frame — those
+users click the new-tab link, which always works because it loads the app directly (no cross-origin frame).
+
+---
+
+## 5. Ongoing maintenance
+
+- **Code changes:** `clasp push`, then update the pinned deployment (above). Test on the `/dev` URL first.
+- **Settings:** edit the `Config` tab (timezone, `defaultBufferMin`, `bookingHorizonDays`, `reminderLeadHours`).
+- **Add/inactivate staff:** `addEmployee(...)`; to remove someone, set their `Users` row `active` to `FALSE`
+  (history and past bookings are preserved).
+- **Reminders:** an hourly trigger runs `sendDueReminders`. If it ever stops, re-run `installTriggers()`.
+- **Email quota:** Workspace allows ~1,500 recipients/day on the owner; far above this team's needs. The code
+  skips and logs sends if the quota is ever hit.
+- **Backups:** the data lives in one Google Sheet — use Google's version history, or File → Make a copy.
+
+---
+
+## 6. Security recap
+
+- The app runs as the owner, so the server **never trusts the browser** about identity: every server function
+  re-derives the user from the Google session and re-checks the role (`requireManager` /
+  `requireSelfOrManager`).
+- Employees can only read/change their own availability, time off, and meetings; the manager can act for
+  anyone; clients have no access at all.
+- Every change is recorded in the append-only `AuditLog`.
+
+---
+
+## 7. User-acceptance test (UAT) matrix
+
+Run through this after deploying. Use two accounts where possible (a manager and an employee), and test both
+**inside the Google Site iframe** and via the **direct `/exec` URL**.
+
+### Setup & access
+| # | Step | Expected |
+|---|---|---|
+| 1 | Open the app before `setup()` | "Setup required" notice (no error page) |
+| 2 | Open as the owner after setup | Manager view; status line shows your email + "manager" + server time |
+| 3 | Open as an added employee | Employee view |
+| 4 | Open as an account not on the roster | "No access" notice naming the email |
+| 5 | `runAllTests()` in the editor | `13/13 passed` |
+
+### Employee — availability (Phase 2)
+| # | Step | Expected |
+|---|---|---|
+| 6 | Set a buffer and Save | Persists on reload |
+| 7 | Add a weekly and a monthly recurring pattern | Listed in plain English |
+| 8 | Add a one-off slot and an exception | Listed; preview reflects them |
+| 9 | Preview a date range | Free time per day; exception hours absent |
+
+### Time off & closures (Phase 3)
+| # | Step | Expected |
+|---|---|---|
+| 10 | Employee adds full-day and partial time off | Listed; preview loses that time |
+| 11 | Manager adds a company closure | Listed under closures |
+| 12 | Manager adds time off for an employee | Listed under that employee |
+
+### Booking (Phase 4)
+| # | Step | Expected |
+|---|---|---|
+| 13 | Manager: Book → show free times → fill client + valid email → Book | Appears on the Schedule calendar |
+| 14 | Book an overlapping time for the same employee | Rejected ("not free") |
+| 15 | Book inside an existing meeting's buffer | Rejected |
+| 16 | Two near-simultaneous bookings of one slot | Exactly one succeeds |
+| 17 | Add time off over an existing meeting | Meeting outlined amber; appears in *Conflicts to review* |
+
+### Reschedule & cancel (Phase 5)
+| # | Step | Expected |
+|---|---|---|
+| 18 | Manager reschedules a meeting to a valid time | Moves; old time frees up |
+| 19 | Reschedule onto a clash | Rejected; meeting unchanged |
+| 20 | Cancel with a reason | Removed from calendar; time reopens |
+| 21 | Reschedule/cancel a flagged meeting | Amber flag and conflict entry clear |
+| 22 | Employee reschedules/cancels their own meeting from *My calendar* | Works; cannot touch another's meeting |
+| 23 | `AuditLog` tab | BOOK / RESCHEDULE / CANCEL / FLAG entries with who & when |
+
+### Notifications (Phase 6)
+| # | Step | Expected |
+|---|---|---|
+| 24 | Book with your address as the client | Client, employee, manager emails arrive |
+| 25 | Reschedule / cancel | Emails arrive (old→new; cancel reason) |
+| 26 | Set `reminderLeadHours` high (or run `sendDueReminders`) | Client + employee reminder; a second run sends nothing |
+
+### Reporting (Phase 7)
+| # | Step | Expected |
+|---|---|---|
+| 27 | Reports tab (last 30 days) | Per-employee booked/offered/utilisation + by-type tables |
+| 28 | Book then re-run | Booked hours & utilisation rise; type appears |
+
+### Embedding (Phase 8)
+| # | Step | Expected |
+|---|---|---|
+| 29 | Open the app inside the Google Site | Renders correctly |
+| 30 | Click the new-tab fallback link | Opens the app directly |
+
+---
+
+## 8. Going-live checklist
+
+- [ ] `clasp push` and `setup()` run; manager + employees added.
+- [ ] Timezone confirmed in `Config` (and on the script + spreadsheet).
+- [ ] Web app deployed (Execute as **Me**, access **Anyone within domain**); `/exec` URL noted and pinned.
+- [ ] Reminder trigger present (`installTriggers()` / from setup).
+- [ ] Embedded in the Google Site + fallback link added; Site published to the domain.
+- [ ] UAT matrix passed (at least the booking, conflict, notification and reporting rows).
+
+---
+
+## 9. v1 complete — possible future enhancements
+
+The system meets all the agreed requirements. Natural next steps, if wanted later:
+
+- **Google Calendar sync** (mirror bookings into employees' Outlook/Google calendars) — easy in this
+  ecosystem; deliberately deferred.
+- **Recurring client meetings** (book the same client on a repeating schedule in one action) — deferred in
+  planning.
+- **In-app roster editing** (add/deactivate staff without the editor).
+- **Archiving** old bookings to keep the hot data small as years accumulate.
+- **SMS reminders** (would need a paid gateway).
+
+Each per-phase document (Phases 0–8) records the design and rationale for that part of the system; together
+they are the maintenance manual for v1.
+Bash Generate Phase 8 docx and rebuild all docs
+IN
+cd /Users/david/Repo/FSW-Booking-System
+python3 tools/md2docx.py docs/Phase-8-Deployment.md
+python3 - <<'PY'
+from docx import Document
+d = Document("docs/Phase-8-Deployment.docx")
+print("paragraphs:", len(d.paragraphs), "| tables:", len(d.tables),
+      "| headings:", sum(1 for p in d.paragraphs if p.style.name.startswith("Heading")))
+PY
+echo "=== regenerate ALL docx to ensure they're current ==="
+tools/build-docs.sh >/dev/null 2>&1 && ls docs/*.docx | wc -l
+
+OUT
+Wrote docs/Phase-8-Deployment.docx
+paragraphs: 93 | tables: 9 | headings: 18
+=== regenerate ALL docx to ensure they're current ===
+       9
+All 9 phase docs are generated. Let me update the docs index and run a final repo-wide consistency check across the whole codebase:
+
+Edit README.md
+Modified
+Bash Final repo-wide consistency checks
+IN
+cd /Users/david/Repo/FSW-Booking-System
+echo "=== 1) brace balance per .gs (mismatches only) ==="
+for f in src/*.gs; do o=$(grep -o '{' "$f"|wc -l|tr -d ' '); c=$(grep -o '}' "$f"|wc -l|tr -d ' '); [ "$o" != "$c" ] && echo "MISMATCH $f {$o }$c"; done; echo "(none above = balanced)"
+echo "=== 2) duplicate top-level function names (should be empty) ==="
+grep -rhoE '^function [a-zA-Z0-9_]+' src/*.gs | sed 's/function //' | sort | uniq -d
+echo "=== 3) any literal gcall target with no server function (should be empty) ==="
+comm -23 <(grep -rhoE "gcall\('[a-zA-Z0-9_]+'" src/ui/*.html | sed "s/gcall('//;s/'//" | sort -u) <(grep -rhoE '^function [a-zA-Z0-9_]+' src/*.gs | sed 's/function //' | sort -u)
+echo "=== 4) variable-dispatched delete* exist? ==="
+for fn in deleteRule deleteOneOff deleteException; do grep -q "^function $fn" src/*.gs && echo "$fn ok"; done
+echo "=== 5) HTML <script> balance ==="
+for f in src/ui/*.html; do o=$(grep -oc '<script' "$f"); c=$(grep -oc '</script>' "$f"); echo "$(basename $f): <script>=$o </script>=$c"; done
+echo "=== 6) counts ==="
+echo "gs files: $(ls src/*.gs|wc -l|tr -d ' '); ui files: $(ls src/ui/*.html|wc -l|tr -d ' '); docs md: $(ls docs/Phase-*.md|wc -l|tr -d ' '); docs docx: $(ls docs/Phase-*.docx|wc -l|tr -d ' ')"
+
+OUT
+=== 1) brace balance per .gs (mismatches only) ===
+(none above = balanced)
+=== 2) duplicate top-level function names (should be empty) ===
+=== 3) any literal gcall target with no server function (should be empty) ===
+=== 4) variable-dispatched delete* exist? ===
+deleteRule ok
+deleteOneOff ok
+deleteException ok
+=== 5) HTML <script> balance ===
+Employee.html: <script>=0 </script>=0
+Index.html: <script>=1 </script>=1
+JsCommon.html: <script>=1 </script>=1
+JsEmployee.html: <script>=3 </script>=3
+JsManager.html: <script>=4 </script>=4
+Manager.html: <script>=1 </script>=1
+Notice.html: <script>=0 </script>=0
+Styles.html: <script>=0 </script>=0
+=== 6) counts ===
+gs files: 17; ui files: 8; docs md: 9; docs docx: 9
+Everything passes: all .gs files brace-balanced, no duplicate functions, every client call resolves to a server function, script tags balanced. v1 is complete. Let me update the progress memory and then give you the wrap-up.
+
+Edit build-progress.md
+Added 6 lines
+Update Todos
+
+Phase 0: Scaffold
+
+Foundation modules + AvailabilityEngine + tests
+
+Phase 0 docs + md2docx tooling
+
+Phase 1: Auth & app shell + docs
+
+Phase 2: Employee availability + UI + docs
+
+Phase 3: Time off / closures + warn-and-flag + docs
+
+Phase 4: Manager booking + FullCalendar + tests + docs
+
+Phase 5: Reschedule + cancel + audit + UI + docs
+
+Phase 6: Notifications + reminder trigger + docs
+
+Phase 7: Reporting dashboard + docs
+
+Phase 8: Deploy + Sites embed + UAT docs (final)
+Phase 8 is done — v1 of the FSW Booking System is complete. 🎉
+
+What Phase 8 added
+Full deployment recipe in the README and docs/Phase-8-Deployment.md: deploy as Execute as: Me + Anyone within domain, pin the deployment so the /exec URL stays stable, embed in Google Sites (Insert → Embed → By URL) with a new-tab fallback.
+A 30-step UAT matrix covering every feature end-to-end, plus a going-live checklist and maintenance notes.
+Polished off the last placeholder: the manager Team tab is now a read-only roster.
+The finished system (all 8 phases)
+Foundation — DST-safe time handling, the on-the-fly availability engine, a locked data layer, audit log, 13 unit tests.
+Employees set recurring + one-off availability, exceptions, a personal buffer, and time off; see their own calendar with reschedule/cancel.
+Manager sees a combined FullCalendar, books clients (double-booking impossible via the lock), reschedules/cancels, sets company closures, reviews conflicts, and runs a utilisation report.
+Email confirmations + reminders through Workspace; warn-and-flag protects existing meetings from time-off clashes.
+9 phase documents in docs/, each in Markdown and Word.
+Final consistency check passed: 17 .gs modules + 8 UI files, all braces balanced, no duplicate globals, every client call maps to a server function.
+
+What's left for you (needs your Google account — I can't do these)
+npm install → clasp login → clasp create … && clasp push
+Run setup(), then runAllTests() (expect 13/13), then addEmployee(...) for your team
+Deploy the web app and embed it in your Site (recipe in Phase 8 doc)
+A couple of honest notes: none of this code has been executed yet — there's no JavaScript runtime on this machine and Apps Script only runs inside Google, so runAllTests() and the UAT matrix are the real proof points once you push. And nothing has been committed to git — say the word and I'll commit it (on a branch) with a sensible message.
+
+Want me to commit the work, or help with anything as you stand it up?

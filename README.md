@@ -6,23 +6,22 @@ the manager books client meetings into it. No third-party services, runs entirel
 
 See the full design in `plans/` (or the approved implementation plan) for the rationale behind every decision.
 
-## Status
+## Status — v1 complete
 
-Built so far (Phase 0 + foundation):
+All eight build phases are done. Per-phase write-ups (Markdown + Word) are in [docs/](docs/README.md).
 
-| Module | Purpose |
+| Area | Modules |
 |---|---|
-| `src/Schema.gs` | Tab names, column order, enums — the data-model source of truth |
-| `src/Config.gs` | Script-property `SHEET_ID` + editable `Config` tab settings (timezone, buffers, reminder lead, …) |
-| `src/TimeUtil.gs` | DST-safe wall-clock ⇄ epoch-ms conversion (the correctness-critical helper) |
-| `src/SheetDAL.gs` | All Sheet I/O: bulk read, append, update-by-id, caching, `withScriptLock` |
-| `src/AuditLog.gs` | Append-only history of every mutating action |
-| `src/AvailabilityEngine.gs` | `computeFreeRanges` + interval algebra — derives bookable time on the fly |
-| `src/Setup.gs` | `setup()` bootstrap: creates the data Sheet, tabs, formats, seeds Config + manager |
-| `src/Tests.gs` | `runAllTests()` — pure unit tests for the engine + timezone logic |
+| Foundation | `Schema.gs`, `Config.gs`, `TimeUtil.gs`, `SheetDAL.gs`, `AuditLog.gs`, `AvailabilityEngine.gs`, `Setup.gs`, `Tests.gs` |
+| Auth & shell | `Auth.gs`, `Code.gs`, `ui/Index.html`, `ui/Styles.html`, `ui/JsCommon.html`, `ui/Notice.html` |
+| Employee | `AvailabilityApi.gs`, `ui/Employee.html`, `ui/JsEmployee.html` |
+| Time off / closures | `TimeOffApi.gs` |
+| Booking & lifecycle | `BookingApi.gs`, `ui/Manager.html`, `ui/JsManager.html` |
+| Notifications | `Notifications.gs`, `Reminders.gs`, `Triggers.gs` |
+| Reporting | `Reporting.gs` |
 
-Still to come (later phases): auth & app shell, employee availability UI, time off/closures, manager
-booking, reschedule/cancel, email notifications + reminders, reporting dashboard, Sites embedding.
+Run `runAllTests()` for the engine/booking unit tests (13). Verify each feature with the matrix in
+[docs/Phase-8-Deployment.md](docs/Phase-8-Deployment.md).
 
 ## Data model (Google Sheet tabs)
 
@@ -87,9 +86,22 @@ reopen) with in-memory data — no spreadsheet required. Check the log for `N/N 
 
 ## Deployment & Google Sites embedding
 
-> Documented in full in **Phase 8**. In brief: deploy as a Web app with **Execute as: Me** and
-> **Who has access: Anyone within `<your domain>`**, embed the `/exec` URL in your Google Site via
-> **Insert → Embed → By URL**, and provide an "Open in new tab" fallback link.
+Full details and the acceptance-test matrix are in [docs/Phase-8-Deployment.md](docs/Phase-8-Deployment.md).
+In short:
+
+1. **Deploy as a Web app.** In the editor: **Deploy → New deployment → Web app** (or `clasp deploy`), with:
+   - **Execute as:** `Me (the owner)`
+   - **Who has access:** `Anyone within <your domain>`
+
+   This combination is required: it lets the app identify each visitor (so roles work) with only a one-time
+   owner authorization, keeps the data Sheet private to the owner, and embeds cleanly in Google Sites.
+2. **Copy the `/exec` URL** (not `/dev`). Re-deploying to the **same deployment** keeps that URL stable, so the
+   Site embed never breaks — use `clasp deployments` and `clasp deploy --deploymentId <id>` to update in place.
+3. **Embed in your Google Site:** edit the Site → **Insert → Embed → By URL** → paste the `/exec` URL. Publish
+   the Site restricted to your Workspace domain.
+4. **Add a fallback link** on the Site — a button "Open Booking System in a new tab" pointing at the `/exec`
+   URL — for the rare locked-down browser that blocks third-party iframes. (The app already sets the two
+   iframe-safety flags: `ALLOWALL` and `<base target="_top">`.)
 
 ## Documentation
 
@@ -111,6 +123,8 @@ FSW-Booking-System/
     appsscript.json   # manifest: timezone, V8, webapp{access:DOMAIN, executeAs:USER_DEPLOYING}, scopes
     Schema.gs  Config.gs  TimeUtil.gs  SheetDAL.gs  AuditLog.gs
     AvailabilityEngine.gs  Setup.gs  Tests.gs
-    # (added in later phases) Code.gs  Auth.gs  AvailabilityApi.gs  BookingApi.gs
-    #                         TimeOffApi.gs  Notifications.gs  Reminders.gs  Reporting.gs  ui/*.html
+    Code.gs  Auth.gs  AvailabilityApi.gs  BookingApi.gs  TimeOffApi.gs
+    Notifications.gs  Reminders.gs  Triggers.gs  Reporting.gs
+    ui/  Index.html Styles.html JsCommon.html Notice.html
+         Employee.html JsEmployee.html  Manager.html JsManager.html
 ```
