@@ -80,6 +80,47 @@
     });
   }
 
+  /* ---- shared helpers used by feature scripts (employee/manager) ---- */
+  function $id(id) { return document.getElementById(id); }
+  function $val(id) { var e = $id(id); return e ? e.value : ''; }
+  function errMsg(e) { return (e && e.message) ? e.message : String(e); }
+
+  /** Disable a button while a promise runs; re-enable on settle. */
+  function busy(btn, p) {
+    btn.disabled = true;
+    return p.then(function (r) { btn.disabled = false; return r; },
+                  function (e) { btn.disabled = false; throw e; });
+  }
+
+  /** Local yyyy-MM-dd for date inputs. */
+  function isoDate(d) {
+    var m = d.getMonth() + 1, day = d.getDate();
+    return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (day < 10 ? '0' : '') + day;
+  }
+
+  /** Compose a save message, warning about any newly-flagged bookings. */
+  function affMsg(base, affected) {
+    if (affected && affected.length) {
+      return base + '. ⚠ ' + affected.length + ' existing meeting(s) now conflict and are flagged for review.';
+    }
+    return base + '.';
+  }
+
+  /** Read a full-day/partial "span" form by id prefix p. */
+  function collectSpan(p) {
+    if ($val(p + 'Scope') === 'FULL_DAY') {
+      return { scope: 'FULL_DAY', startDate: $val(p + 'StartDate'), endDate: $val(p + 'EndDate'), reason: $val(p + 'Reason') };
+    }
+    return { scope: 'PARTIAL', date: $val(p + 'Date'), startTime: $val(p + 'Start'), endTime: $val(p + 'End'), reason: $val(p + 'Reason') };
+  }
+
+  /** Show/hide a span form's fields based on its scope select. */
+  function syncSpanFields(p) {
+    var full = $val(p + 'Scope') === 'FULL_DAY';
+    document.querySelectorAll('.' + p + '-full').forEach(function (e) { e.classList.toggle('hidden', !full); });
+    document.querySelectorAll('.' + p + '-part').forEach(function (e) { e.classList.toggle('hidden', full); });
+  }
+
   (function init() {
     initChrome();
     initTabs();

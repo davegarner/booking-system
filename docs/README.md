@@ -10,7 +10,7 @@ Comprehensive, review-oriented documentation. Every build phase ships a document
 | 0 | [Phase 0 — Foundation](Phase-0-Foundation.md) · `Phase-0-Foundation.docx` | Complete |
 | 1 | [Phase 1 — Auth & app shell](Phase-1-Auth-and-Shell.md) · `Phase-1-Auth-and-Shell.docx` | Complete |
 | 2 | [Phase 2 — Employee availability](Phase-2-Employee-Availability.md) · `Phase-2-Employee-Availability.docx` | Complete |
-| 3 | Time off & closures | Pending |
+| 3 | [Phase 3 — Time off & closures](Phase-3-Time-Off-and-Closures.md) · `Phase-3-Time-Off-and-Closures.docx` | Complete |
 | 4 | Manager booking | Pending |
 | 5 | Reschedule & cancel | Pending |
 | 6 | Notifications & reminders | Pending |

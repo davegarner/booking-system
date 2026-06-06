@@ -185,3 +185,58 @@
     load();
   })();
 </script>
+
+<script>
+  /* JsEmployee (Time off) — wires the employee "Time off" tab to TimeOffApi.
+     Uses shared helpers from JsCommon ($id, $val, busy, isoDate, affMsg,
+     collectSpan, syncSpanFields, errMsg, toast, gcall). */
+  (function () {
+    var root = document.getElementById('employeeView');
+    if (!root) return;
+    var UID = (window.FSW || {}).userId;
+
+    function load() {
+      gcall('getTimeOff', UID).then(render).catch(function (e) { toast(errMsg(e), true); });
+    }
+    function render(items) {
+      var ul = $id('toList'); ul.innerHTML = '';
+      if (!items.length) { ul.innerHTML = '<li class="empty">No upcoming time off.</li>'; return; }
+      items.forEach(function (t) {
+        var li = document.createElement('li');
+        var w = document.createElement('div');
+        var d = document.createElement('div'); d.className = 'desc'; d.textContent = t.text; w.appendChild(d);
+        if (t.reason) { var s = document.createElement('div'); s.className = 'sub'; s.textContent = t.reason; w.appendChild(s); }
+        var b = document.createElement('button');
+        b.className = 'btn danger sm'; b.textContent = 'Remove'; b.dataset.to = t.timeOffId;
+        li.appendChild(w); li.appendChild(b); ul.appendChild(li);
+      });
+    }
+
+    var today = new Date();
+    $id('toStartDate').value = isoDate(today);
+    $id('toEndDate').value = isoDate(today);
+    $id('toDate').value = isoDate(today);
+    $id('toScope').addEventListener('change', function () { syncSpanFields('to'); });
+    syncSpanFields('to');
+
+    $id('toAddBtn').addEventListener('click', function () {
+      var span = collectSpan('to');
+      if (span.scope === 'FULL_DAY' && !span.startDate) { toast('Choose a start date.', true); return; }
+      if (span.scope === 'PARTIAL' && !span.date) { toast('Choose a date.', true); return; }
+      busy(this, gcall('addTimeOff', UID, span))
+        .then(function (res) { toast(affMsg('Time off added', res.affected)); $id('toReason').value = ''; load(); })
+        .catch(function (e) { toast(errMsg(e), true); });
+    });
+
+    $id('toList').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('.btn.danger') : null;
+      if (!b) return;
+      if (!window.confirm('Remove this time off?')) return;
+      busy(b, gcall('deleteTimeOff', UID, b.dataset.to))
+        .then(function () { toast('Removed.'); load(); })
+        .catch(function (err) { toast(errMsg(err), true); });
+    });
+
+    load();
+  })();
+</script>

@@ -122,10 +122,25 @@
 
   <!-- ============================ TIME OFF =============================== -->
   <div id="emp-timeoff" class="panel">
-    <div class="card placeholder">
+    <div class="card">
       <h2>Time off</h2>
-      <p>Mark holidays, sick days, or ad-hoc unavailable blocks that override your normal availability.</p>
-      <p><span class="soon">Coming in Phase 3</span></p>
+      <p>Mark holidays, sick days, or ad-hoc unavailable blocks. This overrides your normal availability so you won't be booked then.</p>
+      <div class="form-grid">
+        <label>Type
+          <select id="toScope">
+            <option value="FULL_DAY">Full day(s)</option>
+            <option value="PARTIAL">Part of a day</option>
+          </select>
+        </label>
+        <label class="to-full">From <input type="date" id="toStartDate"></label>
+        <label class="to-full">To <input type="date" id="toEndDate"></label>
+        <label class="to-part hidden">Date <input type="date" id="toDate"></label>
+        <label class="to-part hidden">From <input type="time" id="toStart" value="09:00"></label>
+        <label class="to-part hidden">To <input type="time" id="toEnd" value="12:00"></label>
+        <label class="wide">Reason <input type="text" id="toReason" placeholder="optional"></label>
+        <button class="btn sm" id="toAddBtn">Add time off</button>
+      </div>
+      <ul id="toList" class="list" style="margin-top:16px;"></ul>
     </div>
   </div>
 

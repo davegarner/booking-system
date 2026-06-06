@@ -25,11 +25,62 @@
   </div>
 
   <div id="mgr-closures" class="panel">
-    <div class="card placeholder">
+
+    <!-- Company-wide closures -->
+    <div class="card">
       <h2>Company closures</h2>
-      <p>Block all employees at once for public holidays or team days, and manage individual time off.</p>
-      <p><span class="soon">Coming in Phase 3</span></p>
+      <p>Block <strong>all</strong> employees at once — public holidays, team days. Added once, applies to everyone.</p>
+      <div class="form-grid">
+        <label>Type
+          <select id="clScope">
+            <option value="FULL_DAY">Full day(s)</option>
+            <option value="PARTIAL">Part of a day</option>
+          </select>
+        </label>
+        <label class="cl-full">From <input type="date" id="clStartDate"></label>
+        <label class="cl-full">To <input type="date" id="clEndDate"></label>
+        <label class="cl-part hidden">Date <input type="date" id="clDate"></label>
+        <label class="cl-part hidden">From <input type="time" id="clStart" value="09:00"></label>
+        <label class="cl-part hidden">To <input type="time" id="clEnd" value="17:00"></label>
+        <label class="wide">Reason <input type="text" id="clReason" placeholder="e.g. Bank Holiday"></label>
+        <button class="btn sm" id="clAddBtn">Add closure</button>
+      </div>
+      <ul id="clList" class="list" style="margin-top:16px;"></ul>
     </div>
+
+    <!-- Time off for a specific employee -->
+    <div class="card">
+      <h2>Time off for an employee</h2>
+      <p>Block an individual's calendar on their behalf.</p>
+      <div class="form-grid">
+        <label>Employee
+          <select id="etoUser"></select>
+        </label>
+        <label>Type
+          <select id="etoScope">
+            <option value="FULL_DAY">Full day(s)</option>
+            <option value="PARTIAL">Part of a day</option>
+          </select>
+        </label>
+        <label class="eto-full">From <input type="date" id="etoStartDate"></label>
+        <label class="eto-full">To <input type="date" id="etoEndDate"></label>
+        <label class="eto-part hidden">Date <input type="date" id="etoDate"></label>
+        <label class="eto-part hidden">From <input type="time" id="etoStart" value="09:00"></label>
+        <label class="eto-part hidden">To <input type="time" id="etoEnd" value="12:00"></label>
+        <label class="wide">Reason <input type="text" id="etoReason" placeholder="optional"></label>
+        <button class="btn sm" id="etoAddBtn">Add time off</button>
+      </div>
+      <ul id="etoList" class="list" style="margin-top:16px;"></ul>
+    </div>
+
+    <!-- Conflicts -->
+    <div class="card">
+      <h2>Conflicts to review</h2>
+      <p>Meetings that overlap time off or a closure. Nothing is cancelled automatically — reschedule or cancel these from the Schedule tab (Phases 4–5).</p>
+      <div class="row"><button class="btn ghost sm" id="refreshConflictsBtn">Refresh</button></div>
+      <ul id="conflictsList" class="list"></ul>
+    </div>
+
   </div>
 
   <div id="mgr-team" class="panel">

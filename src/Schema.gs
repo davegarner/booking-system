@@ -46,7 +46,7 @@ const HEADERS = {
 
   TimeOff: ['timeOffId', 'userId', 'scope', 'startMs', 'endMs', 'reason', 'createdBy', 'createdAtMs', 'active'],
 
-  Closures: ['closureId', 'startMs', 'endMs', 'reason', 'createdBy', 'createdAtMs', 'active'],
+  Closures: ['closureId', 'scope', 'startMs', 'endMs', 'reason', 'createdBy', 'createdAtMs', 'active'],
 
   Bookings: [
     'bookingId', 'userId',

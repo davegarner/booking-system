@@ -12,7 +12,8 @@
       "Bash(python3 tools/md2docx.py docs/Phase-0-Foundation.md)",
       "Bash(python3 -)",
       "Bash(python3 tools/md2docx.py docs/Phase-1-Auth-and-Shell.md)",
-      "Bash(python3 tools/md2docx.py docs/Phase-2-Employee-Availability.md)"
+      "Bash(python3 tools/md2docx.py docs/Phase-2-Employee-Availability.md)",
+      "Bash(python3 tools/md2docx.py docs/Phase-3-Time-Off-and-Closures.md)"
     ]
   }
 }

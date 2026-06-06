@@ -1,0 +1,131 @@
+<script>
+  /* JsManager — wires the manager screens. Loaded only on the manager view.
+     Phase 3 covers the Closures tab (company closures, per-employee time off,
+     conflicts). Later phases extend this file for Schedule/Book/Reports.
+     Uses shared helpers from JsCommon. */
+  (function () {
+    var root = document.getElementById('managerView');
+    if (!root) return;
+
+    var today = new Date();
+
+    /* ----- company closures ----- */
+    function loadClosures() {
+      gcall('getClosures').then(function (items) {
+        var ul = $id('clList'); ul.innerHTML = '';
+        if (!items.length) { ul.innerHTML = '<li class="empty">No upcoming closures.</li>'; return; }
+        items.forEach(function (c) {
+          var li = document.createElement('li');
+          var w = document.createElement('div');
+          var d = document.createElement('div'); d.className = 'desc'; d.textContent = c.text; w.appendChild(d);
+          if (c.reason) { var s = document.createElement('div'); s.className = 'sub'; s.textContent = c.reason; w.appendChild(s); }
+          var b = document.createElement('button');
+          b.className = 'btn danger sm'; b.textContent = 'Remove'; b.dataset.closure = c.closureId;
+          li.appendChild(w); li.appendChild(b); ul.appendChild(li);
+        });
+      }).catch(function (e) { toast(errMsg(e), true); });
+    }
+
+    $id('clStartDate').value = isoDate(today);
+    $id('clEndDate').value = isoDate(today);
+    $id('clDate').value = isoDate(today);
+    $id('clScope').addEventListener('change', function () { syncSpanFields('cl'); });
+    syncSpanFields('cl');
+
+    $id('clAddBtn').addEventListener('click', function () {
+      var span = collectSpan('cl');
+      if (span.scope === 'FULL_DAY' && !span.startDate) { toast('Choose a start date.', true); return; }
+      if (span.scope === 'PARTIAL' && !span.date) { toast('Choose a date.', true); return; }
+      busy(this, gcall('addClosure', span))
+        .then(function (res) { toast(affMsg('Closure added', res.affected)); $id('clReason').value = ''; loadClosures(); loadConflicts(); })
+        .catch(function (e) { toast(errMsg(e), true); });
+    });
+
+    $id('clList').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('.btn.danger') : null;
+      if (!b) return;
+      if (!window.confirm('Remove this closure?')) return;
+      busy(b, gcall('deleteClosure', b.dataset.closure))
+        .then(function () { toast('Closure removed.'); loadClosures(); loadConflicts(); })
+        .catch(function (err) { toast(errMsg(err), true); });
+    });
+
+    /* ----- time off for an employee ----- */
+    function loadRosterInto(sel) {
+      return gcall('getRoster').then(function (people) {
+        sel.innerHTML = '';
+        people.forEach(function (p) {
+          var o = document.createElement('option');
+          o.value = p.userId; o.textContent = p.displayName + (p.role === 'manager' ? ' (manager)' : '');
+          sel.appendChild(o);
+        });
+        return people;
+      });
+    }
+    function loadEtoList() {
+      var uid = $val('etoUser'); if (!uid) { $id('etoList').innerHTML = ''; return; }
+      gcall('getTimeOff', uid).then(function (items) {
+        var ul = $id('etoList'); ul.innerHTML = '';
+        if (!items.length) { ul.innerHTML = '<li class="empty">No upcoming time off for this person.</li>'; return; }
+        items.forEach(function (t) {
+          var li = document.createElement('li');
+          var w = document.createElement('div');
+          var d = document.createElement('div'); d.className = 'desc'; d.textContent = t.text; w.appendChild(d);
+          if (t.reason) { var s = document.createElement('div'); s.className = 'sub'; s.textContent = t.reason; w.appendChild(s); }
+          var b = document.createElement('button');
+          b.className = 'btn danger sm'; b.textContent = 'Remove'; b.dataset.to = t.timeOffId;
+          li.appendChild(w); li.appendChild(b); ul.appendChild(li);
+        });
+      }).catch(function (e) { toast(errMsg(e), true); });
+    }
+
+    $id('etoStartDate').value = isoDate(today);
+    $id('etoEndDate').value = isoDate(today);
+    $id('etoDate').value = isoDate(today);
+    $id('etoScope').addEventListener('change', function () { syncSpanFields('eto'); });
+    syncSpanFields('eto');
+    loadRosterInto($id('etoUser')).then(loadEtoList).catch(function (e) { toast(errMsg(e), true); });
+    $id('etoUser').addEventListener('change', loadEtoList);
+
+    $id('etoAddBtn').addEventListener('click', function () {
+      var uid = $val('etoUser');
+      if (!uid) { toast('Choose an employee.', true); return; }
+      var span = collectSpan('eto');
+      if (span.scope === 'FULL_DAY' && !span.startDate) { toast('Choose a start date.', true); return; }
+      if (span.scope === 'PARTIAL' && !span.date) { toast('Choose a date.', true); return; }
+      busy(this, gcall('addTimeOff', uid, span))
+        .then(function (res) { toast(affMsg('Time off added', res.affected)); $id('etoReason').value = ''; loadEtoList(); loadConflicts(); })
+        .catch(function (e) { toast(errMsg(e), true); });
+    });
+
+    $id('etoList').addEventListener('click', function (e) {
+      var b = e.target.closest ? e.target.closest('.btn.danger') : null;
+      if (!b) return;
+      if (!window.confirm('Remove this time off?')) return;
+      busy(b, gcall('deleteTimeOff', $val('etoUser'), b.dataset.to))
+        .then(function () { toast('Removed.'); loadEtoList(); loadConflicts(); })
+        .catch(function (err) { toast(errMsg(err), true); });
+    });
+
+    /* ----- conflicts ----- */
+    function loadConflicts() {
+      gcall('getFlaggedBookings').then(function (items) {
+        var ul = $id('conflictsList'); ul.innerHTML = '';
+        if (!items.length) { ul.innerHTML = '<li class="empty">No conflicts. 🎉</li>'; return; }
+        items.forEach(function (b) {
+          var li = document.createElement('li'); li.className = 'conflict';
+          var w = document.createElement('div');
+          var d = document.createElement('div'); d.className = 'desc';
+          d.textContent = b.when + ' · ' + b.employee + (b.clientName ? ' with ' + b.clientName : '');
+          w.appendChild(d);
+          var s = document.createElement('div'); s.className = 'sub'; s.textContent = b.flagReason; w.appendChild(s);
+          li.appendChild(w); ul.appendChild(li);
+        });
+      }).catch(function (e) { toast(errMsg(e), true); });
+    }
+    $id('refreshConflictsBtn').addEventListener('click', loadConflicts);
+
+    loadClosures();
+    loadConflicts();
+  })();
+</script>
