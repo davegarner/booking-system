@@ -33,6 +33,9 @@ function setup() {
   seedManager_();
   invalidateAll();
 
+  // Install the hourly reminder trigger (best-effort; needs the script.scriptapp scope).
+  try { installTriggers(); } catch (e) { Logger.log('Could not install triggers automatically: ' + e + ' — run installTriggers() manually.'); }
+
   const url = ss.getUrl();
   Logger.log('✅ Setup complete.\nData spreadsheet: ' + url +
              '\nManager seeded: ' + (Session.getActiveUser().getEmail() || '(unknown)') +

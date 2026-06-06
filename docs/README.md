@@ -13,7 +13,7 @@ Comprehensive, review-oriented documentation. Every build phase ships a document
 | 3 | [Phase 3 — Time off & closures](Phase-3-Time-Off-and-Closures.md) · `Phase-3-Time-Off-and-Closures.docx` | Complete |
 | 4 | [Phase 4 — Manager booking](Phase-4-Manager-Booking.md) · `Phase-4-Manager-Booking.docx` | Complete |
 | 5 | [Phase 5 — Reschedule & cancel](Phase-5-Reschedule-and-Cancel.md) · `Phase-5-Reschedule-and-Cancel.docx` | Complete |
-| 6 | Notifications & reminders | Pending |
+| 6 | [Phase 6 — Notifications & reminders](Phase-6-Notifications.md) · `Phase-6-Notifications.docx` | Complete |
 | 7 | Reporting dashboard | Pending |
 | 8 | Deployment & Google Sites embedding | Pending |
 

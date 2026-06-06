@@ -80,7 +80,7 @@ function createBooking(payload) {
   const tz = getTz();
   const startMs = parseLocalDateTime_(payload.date, payload.startTime, tz);
 
-  return withScriptLock(function () {
+  const created = withScriptLock(function () {
     const v = validateBooking(payload.userId, startMs, payload.lengthMin, null, { nowMs: Date.now() });
     if (!v.ok) throw new Error(v.reason);
     const id = Utilities.getUuid();
@@ -103,8 +103,11 @@ function createBooking(payload) {
     logAudit({ entityType: ENTITY.BOOKING, entityId: id, action: AUDIT_ACTION.BOOK,
                actorUserId: ctx.userId, actorEmail: ctx.email, atMs: now, after: bookingAudit_(row) });
     SpreadsheetApp.flush();
-    return { bookingId: id };
+    return row;
   });
+  // Notify outside the lock (best-effort; never fails the booking).
+  try { notifyBooking_(created, AUDIT_ACTION.BOOK, {}); } catch (e) { Logger.log('notify (book) failed: ' + e); }
+  return { bookingId: created.bookingId };
 }
 
 /** Compact booking snapshot for the audit log. @private */
@@ -202,7 +205,7 @@ function rescheduleBooking(bookingId, payload) {
   const tz = getTz();
   const startMs = parseLocalDateTime_(payload.date, payload.startTime, tz);
 
-  return withScriptLock(function () {
+  const res = withScriptLock(function () {
     const fresh = findById(SHEETS.BOOKINGS, bookingId);
     if (!fresh || String(fresh.status) !== BOOKING_STATUS.CONFIRMED) throw new Error('This meeting is no longer active.');
     const v = validateBooking(String(fresh.userId), startMs, payload.lengthMin, bookingId, { nowMs: Date.now() });
@@ -218,8 +221,15 @@ function rescheduleBooking(bookingId, payload) {
                actorUserId: ctx.userId, actorEmail: ctx.email, atMs: now,
                before: before, after: { startMs: startMs, endMs: v.endMs } });
     SpreadsheetApp.flush();
-    return { ok: true };
+    return { oldStartMs: before.startMs, oldEndMs: before.endMs };
   });
+  try {
+    const full = findById(SHEETS.BOOKINGS, bookingId);
+    const tz2 = getTz();
+    const oldWhen = formatHuman(res.oldStartMs, tz2) + '–' + formatLocal(res.oldEndMs, 'HH:mm', tz2);
+    if (full) notifyBooking_(full, AUDIT_ACTION.RESCHEDULE, { oldWhen: oldWhen });
+  } catch (e) { Logger.log('notify (reschedule) failed: ' + e); }
+  return { ok: true };
 }
 
 /**
@@ -232,7 +242,7 @@ function cancelBooking(bookingId, reason) {
   if (!existing) throw new Error('Booking not found.');
   const ctx = requireSelfOrManager(String(existing.userId));
   if (String(existing.status) !== BOOKING_STATUS.CONFIRMED) throw new Error('This meeting is already cancelled.');
-  return withScriptLock(function () {
+  withScriptLock(function () {
     const now = Date.now();
     updateById(SHEETS.BOOKINGS, bookingId, {
       status: BOOKING_STATUS.CANCELLED, cancelReason: String(reason || ''),
@@ -244,4 +254,7 @@ function cancelBooking(bookingId, reason) {
     SpreadsheetApp.flush();
     return { ok: true };
   });
+  try { notifyBooking_(existing, AUDIT_ACTION.CANCEL, { reason: String(reason || '') }); }
+  catch (e) { Logger.log('notify (cancel) failed: ' + e); }
+  return { ok: true };
 }

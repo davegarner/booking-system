@@ -5635,3 +5635,472 @@ Email notifications: confirmations to the employee, client, and manager on booke
 
 
 
+
+
+
+
+
+proceed
+Now Phase 6 — notifications. First the email module, then the reminder trigger, then I'll hook the booking lifecycle into them. Let me re-read the booking functions so I splice the notification calls in cleanly (sending email after the lock releases, never blocking or failing a booking):
+
+Read BookingApi.gs (lines 97-132)
+Read BookingApi.gs (lines 85-108)
+Read BookingApi.gs (lines 77-85)
+Now I'll splice notifications into createBooking (capture the row, send after the lock):
+
+Edit BookingApi.gs
+Modified
+Edit BookingApi.gs
+Added 3 lines
+Now read the reschedule/cancel tails to splice notifications:
+
+Read BookingApi.gs (lines 197-248)
+Edit BookingApi.gs
+Modified
+Edit BookingApi.gs
+Added 7 lines
+Edit BookingApi.gs
+Modified
+Read BookingApi.gs (lines 248-259)
+Edit BookingApi.gs
+Added 3 lines
+Now the notifications module, the reminder job, and the trigger installer:
+
+Write Notifications.gs
+151 lines
+/**
+ * Notifications.gs — transactional email via Google Workspace (MailApp).
+ *
+ * Sends on BOOK / RESCHEDULE / CANCEL (and REMINDER, see Reminders.gs):
+ *   - the CLIENT gets a friendly confirmation (reply goes to the employee);
+ *   - the assigned EMPLOYEE gets the operational details (client contact, notes);
+ *   - the MANAGER(s) get a copy for oversight — except for reminders, which go to
+ *     client + employee only (a daily manager copy of every reminder is noise;
+ *     change here if you want manager reminders too).
+ *
+ * Sending happens AFTER the booking lock is released and is wrapped in try/catch
+ * by callers, so email problems never affect a booking. Quota is checked first.
+ */
+
+/** Human label for a location/format. @private */
+function locLabelServer_(v) {
+  return v === LOCATION_FORMAT.IN_PERSON ? 'In person'
+       : v === LOCATION_FORMAT.PHONE ? 'Phone'
+       : v === LOCATION_FORMAT.VIDEO ? 'Video' : String(v || '');
+}
+
+/** HTML-escape. @private */
+function esc_(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+  });
+}
+
+/** Active manager emails. @private */
+function managerEmails_() {
+  return readObjects(SHEETS.USERS)
+    .filter(function (u) { return truthy_(u.active) && String(u.role) === ROLES.MANAGER; })
+    .map(function (u) { return String(u.email || ''); })
+    .filter(function (e) { return e; });
+}
+
+/** Send one HTML+text email (best-effort, quota-guarded). @private */
+function sendMail_(to, subject, htmlBody, textBody, replyTo) {
+  if (!isValidEmail_(to)) return false;
+  try {
+    if (MailApp.getRemainingDailyQuota() <= 0) { Logger.log('Email quota exhausted; skipped ' + to); return false; }
+    const msg = { to: to, subject: subject, body: textBody || '', htmlBody: htmlBody, name: safeConfig_('fromName', 'FSW Booking') };
+    if (replyTo) msg.replyTo = replyTo;
+    MailApp.sendEmail(msg);
+    return true;
+  } catch (e) { Logger.log('sendMail_ failed to ' + to + ': ' + e); return false; }
+}
+
+/** Build the detail rows shown in an email. @private */
+function bookingRows_(b, audience, tz) {
+  const employee = findById(SHEETS.USERS, String(b.userId));
+  const empName = employee ? String(employee.displayName || '') : '';
+  const when = formatHuman(Number(b.startMs), tz) + '–' + formatLocal(Number(b.endMs), 'HH:mm', tz);
+  const rows = [];
+  if (audience === 'client') rows.push(['With', empName]);
+  rows.push(['When', when]);
+  rows.push(['Format', locLabelServer_(b.locationFormat)]);
+  if (b.meetingType) rows.push(['Type', String(b.meetingType)]);
+  if (audience === 'staff') {
+    rows.push(['Client', String(b.clientName || '')]);
+    if (b.clientEmail) rows.push(['Client email', String(b.clientEmail)]);
+    if (b.clientPhone) rows.push(['Client phone', String(b.clientPhone)]);
+    if (b.purposeNotes) rows.push(['Notes', String(b.purposeNotes)]);
+  }
+  return rows;
+}
+
+/** Compose {subject, html, text} for an event + audience. @private */
+function composeBookingEmail_(kind, audience, b, extra, tz) {
+  extra = extra || {};
+  const company = safeConfig_('companyName', 'FSW');
+  const dateShort = formatLocal(Number(b.startMs), 'EEE d MMM, HH:mm', tz);
+  const client = String(b.clientName || '');
+  const rows = bookingRows_(b, audience, tz);
+  let title, subject, intro = '';
+
+  if (kind === 'BOOK') {
+    title = audience === 'client' ? 'Your appointment is confirmed' : 'New booking';
+    subject = audience === 'client' ? (company + ': appointment confirmed — ' + dateShort) : ('New booking: ' + client + ' — ' + dateShort);
+    if (audience === 'client') intro = 'Hi ' + client + ', your appointment is booked.';
+  } else if (kind === 'RESCHEDULE') {
+    title = audience === 'client' ? 'Your appointment has moved' : 'Booking rescheduled';
+    subject = audience === 'client' ? (company + ': appointment moved — ' + dateShort) : ('Rescheduled: ' + client + ' — ' + dateShort);
+    if (audience === 'client') intro = 'Hi ' + client + ', your appointment has been rescheduled.';
+    if (extra.oldWhen) rows.unshift(['Previously', extra.oldWhen]);
+  } else if (kind === 'CANCEL') {
+    title = audience === 'client' ? 'Your appointment has been cancelled' : 'Booking cancelled';
+    subject = audience === 'client' ? (company + ': appointment cancelled — ' + dateShort) : ('Cancelled: ' + client + ' — ' + dateShort);
+    if (audience === 'client') intro = 'Hi ' + client + ', your appointment has been cancelled.';
+    if (extra.reason) rows.push(['Reason', extra.reason]);
+  } else { // REMINDER
+    title = audience === 'client' ? 'Appointment reminder' : 'Upcoming appointment';
+    subject = audience === 'client' ? (company + ': reminder — ' + dateShort) : ('Reminder: ' + client + ' — ' + dateShort);
+    if (audience === 'client') intro = 'Hi ' + client + ', this is a reminder of your upcoming appointment.';
+  }
+  return { subject: subject, html: emailHtml_(company, title, intro, rows), text: emailText_(title, intro, rows) };
+}
+
+/** Branded HTML body. @private */
+function emailHtml_(company, title, intro, rows) {
+  let h = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;color:#202124;">';
+  h += '<div style="font-size:18px;font-weight:bold;color:#1a73e8;">' + esc_(company) + ' Booking</div>';
+  h += '<h2 style="font-size:18px;margin:12px 0 6px;">' + esc_(title) + '</h2>';
+  if (intro) h += '<p style="margin:0 0 12px;">' + esc_(intro) + '</p>';
+  h += '<table style="border-collapse:collapse;width:100%;font-size:14px;">';
+  rows.forEach(function (r) {
+    h += '<tr><td style="padding:6px 10px;color:#5f6368;border-bottom:1px solid #eee;">' + esc_(r[0]) +
+         '</td><td style="padding:6px 10px;border-bottom:1px solid #eee;"><b>' + esc_(r[1]) + '</b></td></tr>';
+  });
+  h += '</table>';
+  h += '<p style="color:#9aa0a6;font-size:12px;margin-top:16px;">Automated message from ' + esc_(company) + ' Booking.</p></div>';
+  return h;
+}
+
+/** Plain-text fallback body. @private */
+function emailText_(title, intro, rows) {
+  let t = title + '\n\n';
+  if (intro) t += intro + '\n\n';
+  rows.forEach(function (r) { t += r[0] + ': ' + r[1] + '\n'; });
+  return t;
+}
+
+/**
+ * Send all the emails for a booking event.
+ * @param {Object} b booking row
+ * @param {string} kind 'BOOK' | 'RESCHEDULE' | 'CANCEL' | 'REMINDER'
+ * @param {{oldWhen?:string, reason?:string}} [extra]
+ */
+function notifyBooking_(b, kind, extra) {
+  try {
+    const tz = getTz();
+    const employee = findById(SHEETS.USERS, String(b.userId));
+    const empEmail = employee ? String(employee.email || '') : '';
+
+    if (isValidEmail_(b.clientEmail)) {
+      const mc = composeBookingEmail_(kind, 'client', b, extra, tz);
+      sendMail_(b.clientEmail, mc.subject, mc.html, mc.text, empEmail || null);
+    }
+    if (isValidEmail_(empEmail)) {
+      const me = composeBookingEmail_(kind, 'staff', b, extra, tz);
+      sendMail_(empEmail, me.subject, me.html, me.text, null);
+    }
+    if (kind !== 'REMINDER') { // managers: skip reminders to avoid daily noise
+      const ms = composeBookingEmail_(kind, 'staff', b, extra, tz);
+      managerEmails_().forEach(function (mgr) {
+        if (mgr !== empEmail) sendMail_(mgr, ms.subject, ms.html, ms.text, null);
+      });
+    }
+  } catch (e) { Logger.log('notifyBooking_ error: ' + e); }
+}
+Write Reminders.gs
+33 lines
+/**
+ * Reminders.gs — the scheduled reminder job.
+ *
+ * `sendDueReminders` is run hourly by a time-driven trigger (see Triggers.gs).
+ * It finds confirmed meetings that start within the reminder lead time and
+ * haven't been reminded yet, emails the client + employee, and marks each as
+ * reminded so it's never sent twice. Reschedule resets `reminderSent`, so a moved
+ * meeting gets a fresh reminder for its new time.
+ */
+
+/** Send reminders for meetings due within the lead window. @return {number} count sent */
+function sendDueReminders() {
+  const now = Date.now();
+  const leadMs = (Number(getConfig('reminderLeadHours')) || DEFAULTS.reminderLeadHours) * MS_PER_HOUR;
+  const horizon = now + leadMs;
+
+  const due = readObjects(SHEETS.BOOKINGS, { noCache: true }).filter(function (b) {
+    return String(b.status) === BOOKING_STATUS.CONFIRMED &&
+           !truthy_(b.reminderSent) &&
+           Number(b.startMs) > now &&
+           Number(b.startMs) <= horizon;
+  });
+
+  let sent = 0;
+  due.forEach(function (b) {
+    notifyBooking_(b, 'REMINDER', {});
+    updateById(SHEETS.BOOKINGS, String(b.bookingId), { reminderSent: true, reminderSentAt: now });
+    sent++;
+  });
+  if (sent) Logger.log('sendDueReminders: ' + sent + ' reminder(s) sent.');
+  return sent;
+}
+Write Triggers.gs
+28 lines
+/**
+ * Triggers.gs — install/remove the time-driven reminder job.
+ *
+ * Run `installTriggers()` once (Setup.setup() also calls it). It is idempotent:
+ * it removes any existing reminder triggers first, so re-running never stacks
+ * duplicates (Apps Script caps triggers per script).
+ */
+
+const REMINDER_HANDLER = 'sendDueReminders';
+
+/** Install the hourly reminder trigger (delete-then-create). */
+function installTriggers() {
+  removeTriggers();
+  ScriptApp.newTrigger(REMINDER_HANDLER).timeBased().everyHours(1).create();
+  Logger.log('Installed hourly "' + REMINDER_HANDLER + '" trigger.');
+  return true;
+}
+
+/** Remove any reminder triggers owned by this script/user. */
+function removeTriggers() {
+  let removed = 0;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === REMINDER_HANDLER) { ScriptApp.deleteTrigger(t); removed++; }
+  });
+  if (removed) Logger.log('Removed ' + removed + ' existing "' + REMINDER_HANDLER + '" trigger(s).');
+  return removed;
+}
+Now wire trigger installation into setup() so reminders run from the start:
+
+Edit Setup.gs
+Added 3 lines
+Let me verify the spliced booking functions are structurally sound and check for any duplicate globals introduced by the notification module:
+
+Bash Verify notification hooks, brace balance, duplicates
+IN
+cd /Users/david/Repo/FSW-Booking-System
+echo "=== notify hooks present ==="
+grep -nE "notifyBooking_\(|const created = withScriptLock|const res = withScriptLock|^  withScriptLock\(function" src/BookingApi.gs
+echo "=== balance check: function/brace sanity per new file ==="
+for f in src/Notifications.gs src/Reminders.gs src/Triggers.gs; do
+  echo "$f: { =$(grep -o '{' $f | wc -l | tr -d ' ')  } =$(grep -o '}' $f | wc -l | tr -d ' ')"
+done
+echo "=== duplicate top-level function names across all .gs (should be empty) ==="
+grep -rhoE '^function [a-zA-Z0-9_]+' src/*.gs | sed 's/function //' | sort | uniq -d
+echo "=== reminder/trigger funcs ==="
+grep -rhoE '^function [a-zA-Z0-9_]+' src/Reminders.gs src/Triggers.gs | sed 's/function //'
+
+OUT
+=== notify hooks present ===
+83:  const created = withScriptLock(function () {
+109:  try { notifyBooking_(created, AUDIT_ACTION.BOOK, {}); } catch (e) { Logger.log('notify (book) failed: ' + e); }
+208:  const res = withScriptLock(function () {
+230:    if (full) notifyBooking_(full, AUDIT_ACTION.RESCHEDULE, { oldWhen: oldWhen });
+245:  withScriptLock(function () {
+257:  try { notifyBooking_(existing, AUDIT_ACTION.CANCEL, { reason: String(reason || '') }); }
+=== balance check: function/brace sanity per new file ===
+src/Notifications.gs: { =38  } =38
+src/Reminders.gs: { =7  } =7
+src/Triggers.gs: { =4  } =4
+=== duplicate top-level function names across all .gs (should be empty) ===
+=== reminder/trigger funcs ===
+sendDueReminders
+installTriggers
+removeTriggers
+All hooks are in place and the modules are well-formed. Now the Phase 6 documentation:
+
+Write Phase-6-Notifications.md
+123 lines
+# FSW Booking System — Phase 6: Email Notifications & Reminders
+
+**Document version:** 1.0
+**Date:** 2026-06-06
+**Phase status:** Complete
+**Audience:** Project owner / reviewer (and future developers)
+
+---
+
+## 1. Purpose of this document
+
+This is the design-and-build record for **Phase 6**, which keeps everyone informed by email: confirmations
+when a meeting is booked, moved or cancelled, plus an automatic reminder before each meeting. It uses Google
+Workspace mail only — no third-party service, no extra cost. It builds on the booking lifecycle from
+Phases 4–5.
+
+---
+
+## 2. What's new
+
+- **On booking, reschedule and cancellation**, emails go to:
+  - the **client** (a friendly confirmation; replies go to the employee),
+  - the assigned **employee** (the operational details, including the client's contact info and notes),
+  - the **manager(s)** (a copy for oversight).
+- **A reminder** is sent automatically before each meeting (default **24 hours**, configurable), to the
+  **client** and **employee**.
+
+All emails are sent through your Workspace account; the sender name is the configured company/app name.
+
+---
+
+## 3. How it works
+
+### 3.1 Tailored, private-by-design
+
+Each recipient gets a message written for them rather than one shared email:
+- the client's email never exposes staff email addresses and carries a **reply-to of the employee**, so a
+  client reply lands with the right person;
+- the staff email includes the client's name, email, phone and any notes — the things the employee needs.
+
+Every message is sent as both **HTML and plain text**, branded with the company name.
+
+### 3.2 Sent safely, never blocking a booking
+
+Emails are sent **after** the booking lock is released and are wrapped so that any mail failure is logged but
+**never affects the booking itself** — a meeting is saved whether or not an email goes out. Before sending,
+the remaining daily mail quota is checked; if it's exhausted the send is skipped and logged rather than
+throwing.
+
+### 3.3 The reminder job
+
+A single **hourly time-driven trigger** runs `sendDueReminders`, which:
+1. finds confirmed meetings starting within the reminder lead time that **haven't been reminded yet**;
+2. emails the client and employee;
+3. marks each meeting **reminded** (with a timestamp) so it can never be sent twice.
+
+Because Phase 5 **resets the reminded flag when a meeting is rescheduled**, a moved meeting correctly gets a
+fresh reminder for its new time. Hourly resolution is deliberate — it sends "within the hour it's due" while
+staying well inside Apps Script's trigger limits.
+
+> **Design choice:** reminders go to the client and employee only, not the manager — a manager copy of every
+> reminder every day is noise. Booking/reschedule/cancel emails *do* copy the manager. This is a one-line
+> change in `Notifications.gs` if you ever want manager reminders.
+
+### 3.4 Quota
+
+On a Workspace account the mail limit is generous (~1,500 recipients/day, pooled on the owner). A booking
+event is three recipients; even a busy day for a 10-person team stays comfortably within the limit. The code
+guards against the edge case anyway.
+
+---
+
+## 4. Setup
+
+`setup()` now also installs the reminder trigger (`installTriggers()`), so once you've run setup the reminder
+job is live. It's safe to re-run — installing **removes any existing reminder trigger first**, so duplicates
+never accumulate. If trigger installation is ever skipped (e.g. a permissions hiccup), just run
+`installTriggers()` once from the editor. The required mail scope (`script.send_mail`) is already declared in
+the manifest.
+
+---
+
+## 5. Files
+
+- `src/Notifications.gs` — email composition (per event, per audience) and sending (`notifyBooking_`,
+  `sendMail_`, quota guard, HTML+text templates).
+- `src/Reminders.gs` — `sendDueReminders` (the hourly job, with de-duplication).
+- `src/Triggers.gs` — `installTriggers` / `removeTriggers` (idempotent).
+- `src/BookingApi.gs` — `createBooking`, `rescheduleBooking`, `cancelBooking` now call `notifyBooking_` after
+  the lock.
+- `src/Setup.gs` — runs `installTriggers()` during setup.
+
+No schema changes — the `reminderSent` / `reminderSentAt` fields were already in place from Phase 0.
+
+---
+
+## 6. How to verify
+
+Push (`clasp push`) and re-run `setup()` once (to install the trigger and approve the mail scope). Use real
+email addresses you can read (e.g. your own as the client).
+
+| Step | Expected |
+|---|---|
+| Book a meeting with your email as the client | Three emails arrive: client (confirmation), employee, manager |
+| Reschedule that meeting | Emails arrive showing the new time, with a "Previously" line for the old one |
+| Cancel it | Cancellation emails arrive, including the reason if you gave one |
+| Test reminders without waiting | Either set `reminderLeadHours` high (e.g. 720) in the `Config` tab so an upcoming meeting falls in range, **or** run `sendDueReminders` manually from the editor — the client and employee get a reminder, and a second run sends nothing (de-duplicated) |
+| Reschedule a reminded meeting | Its reminder flag resets, so the next run reminds again for the new time |
+
+> Tip: while testing, watch **View → Executions / Logs** in the editor for `sendDueReminders` output and any
+> skipped-send messages.
+
+---
+
+## 7. What's next
+
+| Phase | Deliverable |
+|---|---|
+| **7** | **Reporting dashboard** — hours booked vs available, utilisation per employee, and a breakdown by meeting type, over a chosen date range |
+| 8 | Deployment & Google Sites embedding + the user-acceptance test pass |
+
+Phase 7 will ship its own `.md` and `.docx` document.
+Bash Generate and validate Phase 6 docx
+IN
+cd /Users/david/Repo/FSW-Booking-System
+python3 tools/md2docx.py docs/Phase-6-Notifications.md
+python3 - <<'PY'
+from docx import Document
+d = Document("docs/Phase-6-Notifications.docx")
+print("paragraphs:", len(d.paragraphs), "| tables:", len(d.tables),
+      "| headings:", sum(1 for p in d.paragraphs if p.style.name.startswith("Heading")))
+PY
+
+OUT
+Wrote docs/Phase-6-Notifications.docx
+paragraphs: 74 | tables: 2 | headings: 12
+Edit README.md
+Modified
+Edit build-progress.md
+Added 6 lines
+Update Todos
+
+Phase 0: Scaffold
+
+Foundation modules + AvailabilityEngine + tests
+
+Phase 0 docs + md2docx tooling
+
+Phase 1: Auth & app shell + docs
+
+Phase 2: Employee availability + UI + docs
+
+Phase 3: Time off / closures + warn-and-flag + docs
+
+Phase 4: Manager booking + FullCalendar + tests + docs
+
+Phase 5: Reschedule + cancel + audit + UI + docs
+
+Phase 6: Notifications + reminder trigger + docs
+
+Phase 7: Reporting dashboard — Reporting.gs (hours/utilisation/by-type) + Manager Reports UI (+ docs)
+
+Phase 8: Deploy + Sites embed + UAT docs
+Phase 6 is complete — everyone now gets kept in the loop automatically.
+
+What I built
+Server
+
+Notifications.gs — notifyBooking_ sends tailored HTML+text emails per recipient: the client (friendly, reply-to set to the employee, no staff addresses exposed), the employee (full client contact + notes), and the manager(s) (oversight copy). Quota-guarded via MailApp.getRemainingDailyQuota().
+Reminders.gs — sendDueReminders finds confirmed meetings due within the lead time that haven't been reminded, emails client + employee, and marks each reminded so it never double-sends. Reschedule (Phase 5) already resets that flag, so a moved meeting re-reminds for its new time.
+Triggers.gs — installTriggers() creates the hourly reminder job (delete-then-create, so re-running never stacks duplicates); setup() now calls it.
+BookingApi.gs — book/reschedule/cancel now notify after the lock releases, wrapped so an email failure can never fail a booking. Reschedule emails show old → new; cancel shows the reason.
+I verified the notify hooks are placed correctly in all three lifecycle functions, the new modules are brace-balanced, and there are no duplicate globals.
+
+Design note: booking/reschedule/cancel copy the manager; reminders go to client + employee only (a daily manager copy of every reminder is noise) — a one-line change if you ever want otherwise.
+
+Docs — docs/Phase-6-Notifications.md + .docx.
+
+To test reminders without waiting a day: set reminderLeadHours high in the Config tab, or just run sendDueReminders from the editor.
+
+Next — Phase 7
+Reporting dashboard: per-employee hours booked vs available and utilisation %, plus a breakdown by meeting type, over a chosen date range — rendered in the manager's Reports tab. Shall I proceed to Phase 7?
