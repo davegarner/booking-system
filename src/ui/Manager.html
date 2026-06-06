@@ -121,10 +121,16 @@
   </div>
 
   <div id="mgr-reports" class="panel">
-    <div class="card placeholder">
+    <div class="card">
       <h2>Reports</h2>
-      <p>Hours booked vs available, utilisation per employee, and a breakdown by meeting type.</p>
-      <p><span class="soon">Coming in Phase 7</span></p>
+      <p>Hours booked vs offered, utilisation per employee, and a breakdown by meeting type.</p>
+      <div class="row">
+        <label>From <input type="date" id="rpFrom"></label>
+        <label>To <input type="date" id="rpTo"></label>
+        <button class="btn sm" id="rpRun">Run</button>
+      </div>
+      <div id="rpSummary" class="sub" style="margin:10px 0;"></div>
+      <div id="rpOut"></div>
     </div>
   </div>
 

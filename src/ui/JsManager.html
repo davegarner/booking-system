@@ -286,3 +286,56 @@
     initCalendar();
   })();
 </script>
+
+<script>
+  /* JsManager (Reports) — the manager reporting dashboard. */
+  (function () {
+    var root = document.getElementById('managerView');
+    if (!root) return;
+
+    function esc(s) {
+      return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+      });
+    }
+
+    function render(rep) {
+      var t = rep.totals;
+      $id('rpSummary').textContent = 'Total booked ' + t.bookedHours + 'h of ' + t.capacityHours +
+        'h offered (' + (t.utilisation == null ? '—' : t.utilisation + '%') + ' utilisation) · ' + t.meetings + ' meeting(s).';
+
+      var html = '<table class="report"><thead><tr><th>Employee</th><th>Booked (h)</th><th>Offered (h)</th><th>Utilisation</th><th>Meetings</th></tr></thead><tbody>';
+      if (!rep.rows.length) html += '<tr><td colspan="5" class="sub">No active employees.</td></tr>';
+      rep.rows.forEach(function (r) {
+        var u = r.utilisation == null ? '—' : r.utilisation + '%';
+        var bar = r.utilisation == null ? '' :
+          '<span class="bar"><span class="bar-fill" style="width:' + Math.min(r.utilisation, 100) + '%"></span></span> ';
+        html += '<tr><td>' + esc(r.name) + '</td><td>' + r.bookedHours + '</td><td>' + r.capacityHours +
+                '</td><td>' + bar + u + '</td><td>' + r.meetings + '</td></tr>';
+      });
+      html += '</tbody></table>';
+
+      if (rep.byType.length) {
+        html += '<h3 style="margin-top:18px;font-size:15px;">By meeting type</h3>' +
+                '<table class="report"><thead><tr><th>Type</th><th>Hours</th><th>Meetings</th></tr></thead><tbody>';
+        rep.byType.forEach(function (x) {
+          html += '<tr><td>' + esc(x.type) + '</td><td>' + x.hours + '</td><td>' + x.meetings + '</td></tr>';
+        });
+        html += '</tbody></table>';
+      }
+      $id('rpOut').innerHTML = html;
+    }
+
+    function run() {
+      var out = $id('rpOut'); out.textContent = 'Loading…';
+      busy($id('rpRun'), gcall('getReport', $val('rpFrom'), $val('rpTo')))
+        .then(render).catch(function (e) { out.textContent = ''; toast(errMsg(e), true); });
+    }
+
+    var today = new Date();
+    $id('rpTo').value = isoDate(today);
+    $id('rpFrom').value = isoDate(new Date(today.getTime() - 29 * 86400000));
+    $id('rpRun').addEventListener('click', run);
+    run();
+  })();
+</script>

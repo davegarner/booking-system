@@ -6104,3 +6104,291 @@ To test reminders without waiting a day: set reminderLeadHours high in the Confi
 
 Next — Phase 7
 Reporting dashboard: per-employee hours booked vs available and utilisation %, plus a breakdown by meeting type, over a chosen date range — rendered in the manager's Reports tab. Shall I proceed to Phase 7?
+
+
+
+
+
+
+
+proceed
+Proceeding to Phase 7 — the reporting dashboard. First the server aggregation:
+
+Write Reporting.gs
+84 lines
+/**
+ * Reporting.gs — manager dashboard metrics.
+ *
+ * For a date range, per active employee:
+ *   - Offered hours = the availability they made bookable (recurring + one-off,
+ *     minus exceptions, time off and closures) — computed with the SAME engine
+ *     as everywhere else, with bookings excluded so it reflects capacity.
+ *   - Booked hours  = confirmed meeting time within the range.
+ *   - Utilisation   = booked ÷ offered.
+ * Plus a company-wide breakdown by meeting type. Read-only; manager only.
+ */
+
+function sumRanges_(ranges) { return ranges.reduce(function (a, r) { return a + (r.end - r.start); }, 0); }
+function clippedDur_(s, e, ws, we) { return Math.max(0, Math.min(e, we) - Math.max(s, ws)); }
+function round1_(x) { return Math.round(x * 10) / 10; }
+
+/**
+ * @param {string} fromDateStr "yyyy-MM-dd" @param {string} toDateStr "yyyy-MM-dd" (inclusive)
+ * @return {{from,to,rows:Array,totals:Object,byType:Array}}
+ */
+function getReport(fromDateStr, toDateStr) {
+  requireManager();
+  const tz = getTz();
+  const ws = parseLocalDateTime_(fromDateStr, '00:00', tz);
+  const we = startOfNextLocalDayMs(parseLocalDateTime_(toDateStr, '00:00', tz), tz);
+  if (!(we > ws)) throw new Error('The "to" date must be on or after the "from" date.');
+  if (we - ws > 400 * MS_PER_DAY) throw new Error('Please choose a range under about a year.');
+
+  // Read each tab once; filter in memory.
+  const users = readObjects(SHEETS.USERS).filter(function (u) { return truthy_(u.active); });
+  const rules = readObjects(SHEETS.RULES);
+  const additions = readObjects(SHEETS.ADDITIONS);
+  const exceptions = readObjects(SHEETS.EXCEPTIONS);
+  const timeOff = readObjects(SHEETS.TIME_OFF);
+  const closures = readObjects(SHEETS.CLOSURES);
+  const bookings = readObjects(SHEETS.BOOKINGS).filter(function (b) {
+    return String(b.status) === BOOKING_STATUS.CONFIRMED && Number(b.endMs) > ws && Number(b.startMs) < we;
+  });
+
+  const byTypeGlobal = {};
+  let totCap = 0, totBooked = 0, totMeetings = 0;
+
+  const rows = users.map(function (u) {
+    const uid = String(u.userId);
+    const data = {
+      rules: rules.filter(function (r) { return String(r.userId) === uid; }),
+      additions: additions.filter(function (r) { return String(r.userId) === uid; }),
+      exceptions: exceptions.filter(function (r) { return String(r.userId) === uid; }),
+      timeOff: timeOff.filter(function (r) { return String(r.userId) === uid; }),
+      closures: closures,
+      bookings: [] // capacity = offered availability, before meetings are subtracted
+    };
+    const capMs = sumRanges_(computeFreeRangesFromData(data, uid, ws, we, tz));
+    const mine = bookings.filter(function (b) { return String(b.userId) === uid; });
+    let bookedMs = 0;
+    mine.forEach(function (b) {
+      const dur = clippedDur_(Number(b.startMs), Number(b.endMs), ws, we);
+      bookedMs += dur;
+      const t = String(b.meetingType || '(unspecified)');
+      if (!byTypeGlobal[t]) byTypeGlobal[t] = { ms: 0, meetings: 0 };
+      byTypeGlobal[t].ms += dur; byTypeGlobal[t].meetings += 1;
+    });
+    totCap += capMs; totBooked += bookedMs; totMeetings += mine.length;
+    return {
+      name: String(u.displayName || u.email || ''), role: String(u.role || ''),
+      bookedHours: round1_(bookedMs / MS_PER_HOUR), capacityHours: round1_(capMs / MS_PER_HOUR),
+      meetings: mine.length, utilisation: capMs > 0 ? Math.round(bookedMs / capMs * 100) : null
+    };
+  }).sort(function (a, b) { return b.bookedHours - a.bookedHours; });
+
+  const byType = Object.keys(byTypeGlobal).map(function (t) {
+    return { type: t, hours: round1_(byTypeGlobal[t].ms / MS_PER_HOUR), meetings: byTypeGlobal[t].meetings };
+  }).sort(function (a, b) { return b.hours - a.hours; });
+
+  return {
+    from: fromDateStr, to: toDateStr, rows: rows,
+    totals: {
+      bookedHours: round1_(totBooked / MS_PER_HOUR), capacityHours: round1_(totCap / MS_PER_HOUR),
+      meetings: totMeetings, utilisation: totCap > 0 ? Math.round(totBooked / totCap * 100) : null
+    },
+    byType: byType
+  };
+}
+Edit Manager.html
+Added 6 lines
+Edit JsManager.html
+Added 53 lines
+Edit Styles.html
+Added 7 lines
+Cross-checking the Phase 7 contract and globals:
+
+Bash Verify Phase 7 contract and no duplicates
+IN
+cd /Users/david/Repo/FSW-Booking-System
+echo "=== getReport defined? ==="; grep -c '^function getReport' src/Reporting.gs
+echo "=== getReport called? ==="; grep -o "gcall('getReport'" src/ui/JsManager.html
+echo "=== duplicate top-level function names across all .gs (should be empty) ==="
+grep -rhoE '^function [a-zA-Z0-9_]+' src/*.gs | sed 's/function //' | sort | uniq -d
+echo "=== any literal gcall target NOT defined server-side? (should be empty) ==="
+comm -23 <(grep -rhoE "gcall\('[a-zA-Z0-9_]+'" src/ui/*.html | sed "s/gcall('//;s/'//" | sort -u) <(grep -rhoE '^function [a-zA-Z0-9_]+' src/*.gs | sed 's/function //' | sort -u)
+echo "=== .gs file count ==="; ls src/*.gs | wc -l
+
+OUT
+=== getReport defined? ===
+1
+=== getReport called? ===
+gcall('getReport'
+=== duplicate top-level function names across all .gs (should be empty) ===
+=== any literal gcall target NOT defined server-side? (should be empty) ===
+=== .gs file count ===
+      17
+Phase 7 wiring is consistent. Now the documentation:
+
+Write Phase-7-Reporting.md
+104 lines
+# FSW Booking System — Phase 7: Reporting Dashboard
+
+**Document version:** 1.0
+**Date:** 2026-06-06
+**Phase status:** Complete
+**Audience:** Project owner / reviewer (and future developers)
+
+---
+
+## 1. Purpose of this document
+
+This is the design-and-build record for **Phase 7**, the manager's reporting dashboard: how much of the time
+each employee offered was actually booked, and what kinds of meetings filled it. It builds on all prior data
+(availability, time off, bookings) and reuses the availability engine so the numbers are consistent with what
+the rest of the system shows.
+
+---
+
+## 2. What the report shows
+
+For a chosen **date range**:
+
+- **Per employee:** booked hours, offered hours, **utilisation %** (with a small bar), and meeting count.
+- **Company totals:** booked vs offered hours, overall utilisation, total meetings.
+- **By meeting type:** total hours and meeting count for each type across the team.
+
+The report opens on the last 30 days by default and can be re-run for any range.
+
+---
+
+## 3. How the numbers are computed
+
+- **Offered hours (capacity)** = the time the employee made bookable — their recurring availability plus
+  one-off additions, **minus** exceptions, time off and company closures — intersected with the date range.
+  Crucially this is computed with the **same `computeFreeRanges` engine** used everywhere else, but with
+  bookings excluded, so "offered" means *capacity made available*, not *capacity still free*.
+- **Booked hours** = the duration of **confirmed** meetings within the range (clipped to the range edges so a
+  meeting straddling the boundary only counts its in-range portion). Cancelled meetings are ignored.
+- **Utilisation** = booked ÷ offered, shown as a percentage (and "—" when an employee offered no time, to
+  avoid a divide-by-zero).
+- **By type** sums booked hours and counts by each meeting's *type* label across all employees.
+
+Reusing the engine matters: utilisation is measured against exactly the availability the system would have let
+the manager book against — the report can't drift from reality.
+
+### Performance
+
+Each underlying tab is read **once** and filtered in memory (the usual rule — Sheet round-trips, not
+computation, are the cost). For a 10-person team over typical ranges this is fast.
+
+---
+
+## 4. The interface
+
+The manager's **Reports** tab has From/To date pickers and a **Run** button. Results render as a summary line,
+a per-employee table (with a utilisation bar), and a by-type table. It runs automatically for the last 30 days
+when the tab first loads.
+
+### Files
+
+- `src/Reporting.gs` — `getReport(fromDate, toDate)` (manager-only) and small aggregation helpers.
+- `src/ui/Manager.html` — the Reports tab built out.
+- `src/ui/JsManager.html` — the report rendering (tables + bars).
+- `src/ui/Styles.html` — report table and bar styles.
+
+No schema changes were needed.
+
+---
+
+## 5. How to verify
+
+Push (`clasp push`). With some availability and a few bookings in place, open the manager **Reports** tab:
+
+| Step | Expected |
+|---|---|
+| The tab auto-runs for the last 30 days | A summary line, a per-employee table, and a by-type table appear |
+| An employee with availability but no bookings | Offered hours > 0, booked 0, utilisation 0% |
+| Book a meeting, then re-run | That employee's booked hours and utilisation rise; the meeting's type appears in the by-type table |
+| Cancel a meeting, then re-run | Its hours drop back out of the totals |
+| Pick a range with no activity | Empty/zero figures, no errors |
+
+A useful sanity check: an employee's **booked + still-free ≈ offered** for the range (buffers and rounding
+aside), because offered is their capacity and booked is the part of it taken.
+
+---
+
+## 6. Notes and limitations (intentional)
+
+- **Offered** capacity is measured before buffers (buffers only affect what's *bookable next to a meeting*,
+  not how much time was offered), so utilisation reflects offered-vs-booked cleanly.
+- Figures use confirmed meetings only; the full history (including cancellations) remains in the `Bookings`
+  and `AuditLog` tabs if deeper analysis is ever needed.
+- The dashboard is read-only and manager-only.
+
+---
+
+## 7. What's next
+
+| Phase | Deliverable |
+|---|---|
+| **8** | **Deployment & Google Sites embedding** — the step-by-step deploy recipe (execute-as-me + domain access), embedding the app in your Google Site with the new-tab fallback, and a full user-acceptance test pass across all features |
+
+Phase 8 will ship its own `.md` and `.docx` document and complete v1.
+Bash Generate and validate Phase 7 docx
+IN
+cd /Users/david/Repo/FSW-Booking-System
+python3 tools/md2docx.py docs/Phase-7-Reporting.md
+python3 - <<'PY'
+from docx import Document
+d = Document("docs/Phase-7-Reporting.docx")
+print("paragraphs:", len(d.paragraphs), "| tables:", len(d.tables),
+      "| headings:", sum(1 for p in d.paragraphs if p.style.name.startswith("Heading")))
+PY
+
+OUT
+Wrote docs/Phase-7-Reporting.docx
+paragraphs: 60 | tables: 2 | headings: 10
+Edit README.md
+Modified
+Edit build-progress.md
+Added 6 lines
+Update Todos
+
+Phase 0: Scaffold
+
+Foundation modules + AvailabilityEngine + tests
+
+Phase 0 docs + md2docx tooling
+
+Phase 1: Auth & app shell + docs
+
+Phase 2: Employee availability + UI + docs
+
+Phase 3: Time off / closures + warn-and-flag + docs
+
+Phase 4: Manager booking + FullCalendar + tests + docs
+
+Phase 5: Reschedule + cancel + audit + UI + docs
+
+Phase 6: Notifications + reminder trigger + docs
+
+Phase 7: Reporting dashboard + docs
+
+Phase 8: Deploy + Sites embed + UAT docs (final)
+Phase 7 is complete — the manager now has a reporting dashboard.
+
+What I built
+Server — Reporting.gs — getReport(from, to) (manager-only). For the date range, per active employee it computes:
+
+Offered hours = capacity made bookable (recurring + one-off − exceptions − time off − closures), using the same computeFreeRanges engine with bookings excluded — so the numbers can't drift from what the booking screen actually allows.
+Booked hours = confirmed meeting time, clipped to the range.
+Utilisation % = booked ÷ offered (shows "—" when nothing was offered, avoiding divide-by-zero).
+Plus company totals and a by-meeting-type breakdown. Each tab is read once and aggregated in memory.
+UI — the manager's Reports tab: From/To pickers + Run, a summary line, a per-employee table with a utilisation bar, and a by-type table. It auto-runs for the last 30 days.
+
+Verified: getReport resolves, no duplicate globals (17 .gs files now).
+
+Docs — docs/Phase-7-Reporting.md + .docx.
+
+Next — Phase 8 (final)
+Deployment & Google Sites embedding + UAT: the full step-by-step deploy recipe (execute-as-me + domain access, pin the deployment, embed /exec in your Site with the new-tab fallback), and a complete acceptance-test matrix covering every feature end to end. This closes out v1. Shall I proceed to Phase 8?

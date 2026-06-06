@@ -17,7 +17,8 @@
       "Bash(grep -vE '_$')",
       "Bash(python3 tools/md2docx.py docs/Phase-4-Manager-Booking.md)",
       "Bash(python3 tools/md2docx.py docs/Phase-5-Reschedule-and-Cancel.md)",
-      "Bash(python3 tools/md2docx.py docs/Phase-6-Notifications.md)"
+      "Bash(python3 tools/md2docx.py docs/Phase-6-Notifications.md)",
+      "Bash(python3 tools/md2docx.py docs/Phase-7-Reporting.md)"
     ]
   }
 }
