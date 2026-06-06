@@ -5343,3 +5343,295 @@ This also lights up Phase 3's warn-and-flag end-to-end: once meetings exist, add
 
 Next — Phase 5
 Reschedule & cancel: move a meeting to a new valid slot (old time reopens automatically), or cancel it with a reason; resolving a flagged meeting clears its flag. Available to the manager and the assigned employee, wired into the detail modal and the employee's "My calendar" tab. Shall I proceed to Phase 5?
+
+
+
+
+
+
+
+
+
+
+
+proceed
+Proceeding to Phase 5 — reschedule & cancel. First the server side (append to BookingApi.gs): the assigned employee or the manager can move a meeting to a valid slot or cancel it, with the old time reopening automatically and conflicts re-evaluated.
+
+Edit BookingApi.gs
+Edit failed
+Let me check the exact end of the file to append correctly:
+
+Read BookingApi.gs (lines 156-185)
+Edit BookingApi.gs
+Added 88 lines
+Now the manager detail modal gains reschedule/cancel actions:
+
+Edit Manager.html
+Added 8 lines
+Now the manager-side client logic for reschedule/cancel, plus event-based refresh. Updating JsManager.html:
+
+Edit JsManager.html
+Added 3 lines
+Edit JsManager.html
+Added 28 lines
+Edit JsManager.html
+Modified
+Edit JsManager.html
+Added 1 line
+I spotted a real bug while wiring this: the employee view has a view-wide click handler for .btn.danger (availability "Remove" buttons), but the Phase 3 time-off Remove buttons and the new cancel buttons are also .btn.danger inside that view — so they'd cross-fire. Let me fix that handler to only act on its own buttons (those carrying a data-kind):
+
+Edit JsEmployee.html
+Added 1 line
+Now the employee My calendar panel:
+
+Edit Employee.html
+Modified
+Edit JsEmployee.html
+Added 72 lines
+Edit Styles.html
+Added 4 lines
+Let me cross-check the Phase 5 contract and re-scan for duplicate globals:
+
+Bash Cross-check Phase 5 contract and duplicates
+IN
+cd /Users/david/Repo/FSW-Booking-System
+echo "=== new booking funcs in BookingApi ==="
+grep -oE '^function [a-zA-Z0-9_]+' src/BookingApi.gs | sed 's/function //' | sort
+echo "=== gcall targets across all UI ==="
+grep -rhoE "gcall\('[a-zA-Z0-9_]+'" src/ui/*.html | sed "s/gcall('//" | sort -u
+echo "=== duplicate top-level function names across all .gs (should be empty) ==="
+grep -rhoE '^function [a-zA-Z0-9_]+' src/*.gs | sed 's/function //' | sort | uniq -d
+echo "=== any gcall target NOT defined as a server function? ==="
+comm -23 <(grep -rhoE "gcall\('[a-zA-Z0-9_]+'" src/ui/*.html | sed "s/gcall('//;s/'//" | sort -u) <(grep -rhoE '^function [a-zA-Z0-9_]+' src/*.gs | sed 's/function //' | sort -u)
+
+OUT
+=== new booking funcs in BookingApi ===
+bookingAudit_
+bookingDetail_
+cancelBooking
+createBooking
+getCalendarBookings
+getMyUpcomingBookings
+getUserColorMap_
+isValidEmail_
+isoNaive_
+meetingFitsFreeRanges_
+rescheduleBooking
+validateBooking
+validateBookingPayload_
+=== gcall targets across all UI ===
+addClosure'
+addException'
+addOneOff'
+addTimeOff'
+cancelBooking'
+createBooking'
+deleteClosure'
+deleteTimeOff'
+getCalendarBookings'
+getClosures'
+getEmployeeAvailability'
+getFlaggedBookings'
+getMyUpcomingBookings'
+getRoster'
+getServerInfo'
+getTimeOff'
+previewFreeRanges'
+rescheduleBooking'
+saveRule'
+setBuffer'
+=== duplicate top-level function names across all .gs (should be empty) ===
+=== any gcall target NOT defined as a server function? ===
+Phase 5 wiring is consistent — all client calls resolve, no duplicate globals. Now the documentation:
+
+Write Phase-5-Reschedule-and-Cancel.md
+122 lines
+# FSW Booking System — Phase 5: Reschedule & Cancel
+
+**Document version:** 1.0
+**Date:** 2026-06-06
+**Phase status:** Complete
+**Audience:** Project owner / reviewer (and future developers)
+
+---
+
+## 1. Purpose of this document
+
+This is the design-and-build record for **Phase 5**, which completes the booking lifecycle: meetings can now
+be **moved** or **cancelled**, by the manager or the assigned employee, safely and with a full history. It
+builds directly on the Phase 4 booking engine.
+
+---
+
+## 2. What's new
+
+- **Reschedule** a meeting to a new time. The new slot is validated exactly like a fresh booking; the old time
+  reopens automatically.
+- **Cancel** a meeting with an optional reason. The time reopens and any conflict flag is cleared.
+- Both actions are available to **the manager** (from the Schedule calendar) and to **the assigned employee**
+  (from their new *My calendar* list).
+- Resolving a flagged (time-off-clash) meeting by moving or cancelling it **clears the flag** and removes it
+  from the manager's *Conflicts to review* list.
+
+---
+
+## 3. How it works
+
+### 3.1 Reschedule
+
+Moving a meeting re-uses the Phase 4 validator, with one addition: the booking's **own** footprint is ignored
+during the check (so a meeting can be "moved" to overlap where it currently sits). The new time must still be
+fully inside the employee's free time, clear of other meetings, respecting the buffer, and off any time
+off/closure. On success:
+
+- the meeting's start/end are updated and its buffer snapshot refreshed to the employee's current buffer;
+- the **old time reopens automatically** — because availability is always derived, nothing extra is needed;
+- the meeting's conflict flag is **re-evaluated** at the new time (it may clear an old clash or reveal a new
+  one);
+- the reminder is **reset** so a fresh reminder will fire for the new time (Phase 6).
+
+Like booking, reschedule runs inside the script lock and re-validates against freshly-committed data, so it
+can't race another change into a double-booking.
+
+### 3.2 Cancel
+
+Cancelling sets the meeting's status to *cancelled*, records the optional reason, and clears any conflict
+flag. The booking row is **kept** (never deleted), so history and reporting stay intact; because the engine
+ignores cancelled bookings, the time immediately becomes bookable again.
+
+### 3.3 Who can do it
+
+Every reschedule/cancel call re-derives the caller's identity from the session and checks
+`requireSelfOrManager(<the booking's employee>)` — so the manager can act on any meeting, an employee only on
+their own, and knowing a booking's id alone grants nobody access. Both actions are fully audited (who, when,
+before/after, and the cancel reason).
+
+---
+
+## 4. The interface
+
+**Manager (Schedule tab):** clicking a meeting opens its detail modal, which now has **Reschedule** (reveals a
+date/start/length form, pre-filled from the meeting) and **Cancel meeting** (prompts for a reason). After
+either action the calendar and the conflicts list refresh automatically.
+
+**Employee (My calendar tab):** a list of the employee's upcoming meetings, each with **Reschedule** (an
+inline pre-filled form) and **Cancel**. The list refreshes after each change.
+
+**Live refresh:** booking changes broadcast a small in-page event; the calendar re-fetches and the conflicts
+list reloads in response, so the manager's views stay in sync without a manual refresh.
+
+### A bug fixed along the way
+
+The employee view had a single view-wide handler for availability "Remove" buttons. With time-off and cancel
+buttons (also styled as danger buttons) now living in the same view, that handler was tightened to act **only**
+on availability buttons (which carry a `data-kind`), preventing any cross-firing between the three lists.
+
+---
+
+## 5. Files
+
+- `src/BookingApi.gs` — added `getMyUpcomingBookings`, `rescheduleBooking`, `cancelBooking`, and a
+  `bookingDetail_` projection.
+- `src/ui/Manager.html` — the detail modal gained reschedule/cancel controls and an inline move form.
+- `src/ui/JsManager.html` — reschedule/cancel wiring; an in-page "bookings changed" event drives calendar and
+  conflict refresh.
+- `src/ui/Employee.html` — the *My calendar* tab built out.
+- `src/ui/JsEmployee.html` — the *My calendar* list with inline reschedule/cancel (and the delegation fix).
+- `src/ui/Styles.html` — styles for the calendar list items.
+
+No new data fields were needed — Phase 0 already provided status, cancel reason, and the reminder fields.
+
+---
+
+## 6. How to verify
+
+Push (`clasp push`). With at least one booking (Phase 4):
+
+| Step | Expected |
+|---|---|
+| Manager clicks a meeting → Reschedule → pick a new valid time → Confirm | Meeting moves; old slot becomes free again; calendar updates |
+| Reschedule onto a clashing time | Rejected with a clear reason; meeting unchanged |
+| Manager clicks a meeting → Cancel → enter a reason | Meeting disappears from the calendar; time is bookable again |
+| Add time off over a meeting, then cancel/reschedule that meeting | The amber flag and the *Conflicts to review* entry clear |
+| Employee opens *My calendar* → Reschedule / Cancel their own meeting | Works; an employee cannot act on someone else's meeting |
+| Check the `AuditLog` tab | BOOK / RESCHEDULE / CANCEL entries with who, when, and before/after |
+
+---
+
+## 7. What's next
+
+| Phase | Deliverable |
+|---|---|
+| **6** | **Email notifications** — confirmations to the employee, client and manager on booked / rescheduled / cancelled, plus a 24-hour reminder (a scheduled job, de-duplicated; reset on reschedule, which Phase 5 already wired) |
+| 7 | Reporting dashboard |
+| 8 | Deployment & Google Sites embedding |
+
+Phase 6 will ship its own `.md` and `.docx` document.
+Bash Generate and validate Phase 5 docx
+IN
+cd /Users/david/Repo/FSW-Booking-System
+python3 tools/md2docx.py docs/Phase-5-Reschedule-and-Cancel.md
+python3 - <<'PY'
+from docx import Document
+d = Document("docs/Phase-5-Reschedule-and-Cancel.docx")
+print("paragraphs:", len(d.paragraphs), "| tables:", len(d.tables),
+      "| headings:", sum(1 for p in d.paragraphs if p.style.name.startswith("Heading")))
+PY
+
+OUT
+Wrote docs/Phase-5-Reschedule-and-Cancel.docx
+paragraphs: 72 | tables: 2 | headings: 12
+Edit README.md
+Modified
+Edit build-progress.md
+Added 6 lines
+Update Todos
+
+Phase 0: Scaffold
+
+Foundation modules + AvailabilityEngine + tests
+
+Phase 0 docs + md2docx tooling
+
+Phase 1: Auth & app shell + docs
+
+Phase 2: Employee availability + UI + docs
+
+Phase 3: Time off / closures + warn-and-flag + docs
+
+Phase 4: Manager booking + FullCalendar + tests + docs
+
+Phase 5: Reschedule + cancel + audit + UI + docs
+
+Phase 6: Notifications — MailApp templates (book/reschedule/cancel) + hourly reminder trigger + dedupe (+ docs)
+
+Phase 7: Reporting dashboard (+ docs)
+
+Phase 8: Deploy + Sites embed + UAT docs
+Phase 5 is complete — the booking lifecycle is now whole.
+
+What I built
+Server — BookingApi.gs (added):
+
+rescheduleBooking — re-validates the new slot (ignoring the meeting's own footprint) under the lock; the old time reopens automatically, the buffer snapshot refreshes, the conflict flag is re-evaluated, and the reminder resets for the new time.
+cancelBooking — sets status to cancelled with an optional reason, clears any flag, reopens the time; the row is kept for history.
+getMyUpcomingBookings — the employee's own meetings.
+Both reschedule and cancel are guarded by requireSelfOrManager(<booking's employee>), so a booking id alone grants no one access; everything is audited (BOOK / RESCHEDULE / CANCEL with before/after).
+UI
+
+Manager: the meeting detail modal gained Reschedule (inline, pre-filled) and Cancel (with reason). An in-page event keeps the calendar and the conflicts list in sync after any change.
+Employee: the My calendar tab now lists upcoming meetings with inline reschedule/cancel for their own bookings.
+Resolving a flagged meeting (move or cancel) clears the amber flag and drops it from Conflicts to review.
+Bug fixed: the employee view had one view-wide handler for danger ("Remove") buttons; with time-off and cancel buttons now sharing that view, I tightened it to act only on availability buttons (those with data-kind) so the three lists can't cross-fire.
+
+I verified every client call resolves to a server function and there are still no duplicate globals.
+
+Docs — docs/Phase-5-Reschedule-and-Cancel.md + .docx.
+
+Next — Phase 6
+Email notifications: confirmations to the employee, client, and manager on booked / rescheduled / cancelled, plus a 24-hour reminder via an hourly scheduled job (de-duplicated; reschedule already resets the reminder flag). All through Google Workspace mail — no third-party service. Shall I proceed to Phase 6?
+
+
+
+
+

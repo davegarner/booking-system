@@ -157,3 +157,91 @@ function getCalendarBookings(fromDateStr, toDateStr) {
       };
     });
 }
+
+/* ------------------------------- reschedule / cancel ---------------------- */
+
+/** Full detail of a booking for lists/forms. @private */
+function bookingDetail_(b, tz) {
+  return {
+    bookingId: String(b.bookingId), userId: String(b.userId),
+    clientName: String(b.clientName || ''), clientEmail: String(b.clientEmail || ''), clientPhone: String(b.clientPhone || ''),
+    meetingType: String(b.meetingType || ''), locationFormat: String(b.locationFormat || ''), purposeNotes: String(b.purposeNotes || ''),
+    startMs: Number(b.startMs), endMs: Number(b.endMs),
+    whenText: formatHuman(Number(b.startMs), tz), endTimeText: formatLocal(Number(b.endMs), 'HH:mm', tz),
+    dateStr: formatLocal(Number(b.startMs), 'yyyy-MM-dd', tz), startTimeStr: formatLocal(Number(b.startMs), 'HH:mm', tz),
+    lengthMin: Math.round((Number(b.endMs) - Number(b.startMs)) / 60000),
+    flag: String(b.flag || BOOKING_FLAG.NONE), flagReason: String(b.flagReason || '')
+  };
+}
+
+/** A user's upcoming confirmed meetings (self or manager). */
+function getMyUpcomingBookings(userId) {
+  requireSelfOrManager(userId);
+  const uid = String(userId), tz = getTz(), now = Date.now();
+  return readObjects(SHEETS.BOOKINGS)
+    .filter(function (b) { return String(b.userId) === uid && String(b.status) === BOOKING_STATUS.CONFIRMED && Number(b.endMs) >= now; })
+    .sort(function (a, b) { return Number(a.startMs) - Number(b.startMs); })
+    .map(function (b) { return bookingDetail_(b, tz); });
+}
+
+/**
+ * Move a confirmed booking to a new time. Manager or the assigned employee.
+ * Re-validates the new slot (ignoring the booking's own footprint); the old time
+ * reopens automatically because availability is always derived. Resets the
+ * reminder and re-evaluates the conflict flag.
+ * @param {string} bookingId @param {{date,startTime,lengthMin}} payload
+ */
+function rescheduleBooking(bookingId, payload) {
+  const existing = findById(SHEETS.BOOKINGS, bookingId);
+  if (!existing) throw new Error('Booking not found.');
+  if (String(existing.status) !== BOOKING_STATUS.CONFIRMED) throw new Error('Only active meetings can be rescheduled.');
+  const ctx = requireSelfOrManager(String(existing.userId));
+  if (!/^\d{1,2}:\d{2}$/.test(String(payload.startTime || ''))) throw new Error('Choose a start time.');
+  if (!(Number(payload.lengthMin) > 0)) throw new Error('Enter a meeting length.');
+  if (!payload.date) throw new Error('Choose a date.');
+  const tz = getTz();
+  const startMs = parseLocalDateTime_(payload.date, payload.startTime, tz);
+
+  return withScriptLock(function () {
+    const fresh = findById(SHEETS.BOOKINGS, bookingId);
+    if (!fresh || String(fresh.status) !== BOOKING_STATUS.CONFIRMED) throw new Error('This meeting is no longer active.');
+    const v = validateBooking(String(fresh.userId), startMs, payload.lengthMin, bookingId, { nowMs: Date.now() });
+    if (!v.ok) throw new Error(v.reason);
+    const now = Date.now();
+    const before = { startMs: Number(fresh.startMs), endMs: Number(fresh.endMs) };
+    updateById(SHEETS.BOOKINGS, bookingId, {
+      startMs: startMs, endMs: v.endMs, bufferBeforeMin: v.bufferMin, bufferAfterMin: v.bufferMin,
+      reminderSent: false, reminderSentAt: '', updatedBy: ctx.userId, updatedAtMs: now
+    });
+    recomputeFlagsForUsers_([String(fresh.userId)], ctx); // moved meeting may resolve or hit a conflict
+    logAudit({ entityType: ENTITY.BOOKING, entityId: bookingId, action: AUDIT_ACTION.RESCHEDULE,
+               actorUserId: ctx.userId, actorEmail: ctx.email, atMs: now,
+               before: before, after: { startMs: startMs, endMs: v.endMs } });
+    SpreadsheetApp.flush();
+    return { ok: true };
+  });
+}
+
+/**
+ * Cancel a confirmed booking. Manager or the assigned employee. The time reopens
+ * automatically; an optional reason is recorded; any conflict flag is cleared.
+ * @param {string} bookingId @param {string} reason
+ */
+function cancelBooking(bookingId, reason) {
+  const existing = findById(SHEETS.BOOKINGS, bookingId);
+  if (!existing) throw new Error('Booking not found.');
+  const ctx = requireSelfOrManager(String(existing.userId));
+  if (String(existing.status) !== BOOKING_STATUS.CONFIRMED) throw new Error('This meeting is already cancelled.');
+  return withScriptLock(function () {
+    const now = Date.now();
+    updateById(SHEETS.BOOKINGS, bookingId, {
+      status: BOOKING_STATUS.CANCELLED, cancelReason: String(reason || ''),
+      flag: BOOKING_FLAG.NONE, flagReason: '', updatedBy: ctx.userId, updatedAtMs: now
+    });
+    logAudit({ entityType: ENTITY.BOOKING, entityId: bookingId, action: AUDIT_ACTION.CANCEL,
+               actorUserId: ctx.userId, actorEmail: ctx.email, atMs: now, reason: String(reason || ''),
+               before: bookingAudit_(existing) });
+    SpreadsheetApp.flush();
+    return { ok: true };
+  });
+}

@@ -135,7 +135,15 @@
     <div class="modal-card">
       <h3 id="bmTitle">Meeting</h3>
       <div id="bmBody"></div>
-      <div class="row" style="justify-content:flex-end; margin-bottom:0;">
+      <div id="bmRescheduleForm" class="form-grid hidden">
+        <label>New date <input type="date" id="bmDate"></label>
+        <label>Start <input type="time" id="bmStart"></label>
+        <label>Length (min) <input type="number" id="bmLen" class="input-sm" min="5" max="600" step="5"></label>
+        <button class="btn sm" id="bmConfirmReschedule">Confirm move</button>
+      </div>
+      <div class="row" style="justify-content:flex-end; margin-bottom:0; margin-top:14px;">
+        <button class="btn ghost sm" id="bmReschedule">Reschedule</button>
+        <button class="btn danger sm" id="bmCancel">Cancel meeting</button>
         <button class="btn ghost sm" id="bmClose">Close</button>
       </div>
     </div>

@@ -170,16 +170,89 @@
         .catch(function (err) { out.textContent = ''; toast(errMsg(err), true); });
     });
 
-    // Delete (event delegation for all "Remove" buttons in this view).
+    // Delete (event delegation for availability "Remove" buttons only — they
+    // carry data-kind. Time-off and my-calendar buttons are handled elsewhere).
     root.addEventListener('click', function (e) {
       var btn = e.target.closest ? e.target.closest('.btn.danger') : null;
-      if (!btn) return;
+      if (!btn || !btn.dataset.kind) return;
       var kind = btn.dataset.kind, id = btn.dataset.id;
       if (!window.confirm('Remove this entry?')) return;
       var fn = kind === 'rule' ? 'deleteRule' : kind === 'addition' ? 'deleteOneOff' : 'deleteException';
       busy(btn, gcall(fn, UID, id))
         .then(function () { toast('Removed.'); load(); })
         .catch(function (err) { toast(errMsg(err), true); });
+    });
+
+    load();
+  })();
+</script>
+
+<script>
+  /* JsEmployee (My calendar) — the employee's upcoming meetings with inline
+     reschedule and cancel. Uses TimeOffApi/BookingApi via gcall + JsCommon. */
+  (function () {
+    var root = document.getElementById('employeeView');
+    if (!root) return;
+    var UID = (window.FSW || {}).userId;
+
+    function locLabel(v) { return v === 'IN_PERSON' ? 'In person' : v === 'PHONE' ? 'Phone' : v === 'VIDEO' ? 'Video' : v || ''; }
+
+    function load() {
+      gcall('getMyUpcomingBookings', UID).then(render).catch(function (e) { toast(errMsg(e), true); });
+    }
+    function render(items) {
+      var ul = $id('myBookingsList'); ul.innerHTML = '';
+      if (!items.length) { ul.innerHTML = '<li class="empty">No upcoming meetings.</li>'; return; }
+      items.forEach(function (b) {
+        var li = document.createElement('li'); li.className = 'bk-item'; li.dataset.bk = b.bookingId;
+        var main = document.createElement('div'); main.className = 'bk-main';
+        var info = document.createElement('div');
+        var d = document.createElement('div'); d.className = 'desc';
+        d.textContent = b.whenText + '–' + b.endTimeText + ' · ' + (b.clientName || '(client)') + (b.meetingType ? (' · ' + b.meetingType) : '');
+        info.appendChild(d);
+        var sub = document.createElement('div'); sub.className = 'sub';
+        sub.textContent = locLabel(b.locationFormat) + (b.purposeNotes ? (' · ' + b.purposeNotes) : '') +
+                          (b.flag === 'TIMEOFF_CONFLICT' ? (' · ⚠ ' + (b.flagReason || 'conflict')) : '');
+        info.appendChild(sub);
+        var actions = document.createElement('div'); actions.className = 'actions';
+        var rb = document.createElement('button'); rb.className = 'btn ghost sm act-resched'; rb.textContent = 'Reschedule';
+        var cb = document.createElement('button'); cb.className = 'btn danger sm act-cancel'; cb.textContent = 'Cancel';
+        actions.appendChild(rb); actions.appendChild(cb);
+        main.appendChild(info); main.appendChild(actions);
+        li.appendChild(main);
+
+        var form = document.createElement('div'); form.className = 'resched-form form-grid hidden';
+        form.innerHTML =
+          '<label>New date <input type="date" class="rf-date"></label>' +
+          '<label>Start <input type="time" class="rf-start"></label>' +
+          '<label>Length (min) <input type="number" class="rf-len input-sm" min="5" max="600" step="5"></label>' +
+          '<button class="btn sm act-confirm">Confirm move</button>';
+        li.appendChild(form);
+        form.querySelector('.rf-date').value = b.dateStr;
+        form.querySelector('.rf-start').value = b.startTimeStr;
+        form.querySelector('.rf-len').value = b.lengthMin;
+        ul.appendChild(li);
+      });
+    }
+
+    $id('myBookingsList').addEventListener('click', function (e) {
+      var li = e.target.closest ? e.target.closest('.bk-item') : null;
+      if (!li) return;
+      var id = li.dataset.bk;
+      if (e.target.closest('.act-resched')) { li.querySelector('.resched-form').classList.toggle('hidden'); return; }
+      if (e.target.closest('.act-confirm')) {
+        var payload = { date: li.querySelector('.rf-date').value, startTime: li.querySelector('.rf-start').value, lengthMin: Number(li.querySelector('.rf-len').value) };
+        busy(e.target.closest('.act-confirm'), gcall('rescheduleBooking', id, payload))
+          .then(function () { toast('Rescheduled.'); load(); }).catch(function (err) { toast(errMsg(err), true); });
+        return;
+      }
+      if (e.target.closest('.act-cancel')) {
+        var reason = window.prompt('Reason for cancelling? (optional)');
+        if (reason === null) return;
+        busy(e.target.closest('.act-cancel'), gcall('cancelBooking', id, reason))
+          .then(function () { toast('Cancelled.'); load(); }).catch(function (err) { toast(errMsg(err), true); });
+        return;
+      }
     });
 
     load();

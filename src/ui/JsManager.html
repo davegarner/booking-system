@@ -124,6 +124,7 @@
       }).catch(function (e) { toast(errMsg(e), true); });
     }
     $id('refreshConflictsBtn').addEventListener('click', loadConflicts);
+    document.addEventListener('fsw:bookingsChanged', loadConflicts);
 
     loadClosures();
     loadConflicts();
@@ -137,7 +138,10 @@
     var root = document.getElementById('managerView');
     if (!root) return;
     var calendar = null;
+    var currentBookingId = null;
 
+    function utcDateStr(d) { return d ? d.toISOString().slice(0, 10) : ''; }
+    function utcTimeStr(d) { return d ? d.toISOString().slice(11, 16) : ''; }
     function locLabel(v) { return v === 'IN_PERSON' ? 'In person' : v === 'PHONE' ? 'Phone' : v === 'VIDEO' ? 'Video' : v || ''; }
     function escapeHtml(s) {
       return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
@@ -187,12 +191,40 @@
       if (p.flag === 'TIMEOFF_CONFLICT') rows.push(['⚠ Conflict', p.flagReason || 'Overlaps time off / closure']);
       $id('bmBody').innerHTML = rows.map(function (r) {
         return '<div class="kv"><span>' + escapeHtml(r[0]) + '</span><b>' + escapeHtml(r[1]) + '</b></div>';
-      }).join('') + '<p class="sub" style="margin-top:10px;">Reschedule and cancel arrive in Phase 5.</p>';
+      }).join('');
+      currentBookingId = ev.id;
+      $id('bmDate').value = utcDateStr(ev.start);
+      $id('bmStart').value = utcTimeStr(ev.start);
+      $id('bmLen').value = ev.end ? Math.round((ev.end - ev.start) / 60000) : 60;
+      $id('bmRescheduleForm').classList.add('hidden');
       $id('bookingModal').hidden = false;
     }
     function closeModal() { $id('bookingModal').hidden = true; }
     $id('bmClose').addEventListener('click', closeModal);
     $id('bookingModal').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
+
+    $id('bmReschedule').addEventListener('click', function () {
+      $id('bmRescheduleForm').classList.toggle('hidden');
+    });
+    $id('bmConfirmReschedule').addEventListener('click', function () {
+      if (!currentBookingId) return;
+      var payload = { date: $val('bmDate'), startTime: $val('bmStart'), lengthMin: Number($val('bmLen')) };
+      busy(this, gcall('rescheduleBooking', currentBookingId, payload)).then(function () {
+        toast('Meeting rescheduled.'); closeModal();
+        document.dispatchEvent(new Event('fsw:bookingsChanged'));
+      }).catch(function (e) { toast(errMsg(e), true); });
+    });
+    $id('bmCancel').addEventListener('click', function () {
+      if (!currentBookingId) return;
+      var reason = window.prompt('Reason for cancelling? (optional)');
+      if (reason === null) return; // user dismissed
+      busy(this, gcall('cancelBooking', currentBookingId, reason)).then(function () {
+        toast('Meeting cancelled.'); closeModal();
+        document.dispatchEvent(new Event('fsw:bookingsChanged'));
+      }).catch(function (e) { toast(errMsg(e), true); });
+    });
+
+    document.addEventListener('fsw:bookingsChanged', function () { if (calendar) calendar.refetchEvents(); });
 
     // Re-fit the calendar when its tab becomes visible (it may have rendered hidden).
     root.addEventListener('click', function (e) {
@@ -246,7 +278,7 @@
         toast('Meeting booked.');
         ['bkName', 'bkEmail', 'bkPhone', 'bkType', 'bkNotes'].forEach(function (id) { $id(id).value = ''; });
         $id('bkSlots').innerHTML = '';
-        if (calendar) calendar.refetchEvents();
+        document.dispatchEvent(new Event('fsw:bookingsChanged'));
       }).catch(function (e) { toast(errMsg(e), true); });
     });
 
