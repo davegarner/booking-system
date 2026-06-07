@@ -34,7 +34,11 @@
       "Read(//Users/david/.ssh/**)",
       "Bash(ssh -T -o StrictHostKeyChecking=no -o ConnectTimeout=5 git@github.com)",
       "Bash(git fetch *)",
-      "Bash(git ls-tree *)"
+      "Bash(git ls-tree *)",
+      "Bash(git add *)",
+      "Bash(git commit -q -m 'Add comprehensive project handoff document *)",
+      "Bash(git push *)",
+      "Bash(git remote *)"
     ]
   }
 }
