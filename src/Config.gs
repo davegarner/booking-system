@@ -19,7 +19,9 @@ const DEFAULTS = {
   cacheTtlSec: 45,             // CacheService TTL for hot tab reads
   lockTimeoutMs: 15000,        // LockService wait before giving up
   companyName: 'FSW',
-  fromName: 'FSW Booking'
+  fromName: 'FSW Booking',
+  oauthClientIds: '',          // comma-separated OAuth client IDs the desktop app's ID tokens must match (aud); '' disables desktop sign-in
+  allowedDomain: ''            // optional Workspace domain (hd claim) to restrict desktop sign-in; '' = roster check only
 };
 
 /** Numeric config keys — values coerced to Number on read. */
@@ -69,4 +71,28 @@ function getAllConfig_() {
 /** Clear the in-execution config memo (call after writing Config rows). */
 function clearConfigMemo_() {
   _configMemo = null;
+}
+
+/**
+ * Upsert a single Config tab row (key → value) and clear caches. Business
+ * settings are normally edited directly in the sheet; this exists so setup
+ * helpers (e.g. setDesktopAuth) can write config programmatically. @private
+ */
+function setConfig_(key, value) {
+  const sh = getSheet_(SHEETS.CONFIG);
+  const values = sh.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const kIdx = headers.indexOf('key');
+  const vIdx = headers.indexOf('value');
+  if (kIdx === -1 || vIdx === -1) throw new Error('Config tab is missing its key/value columns.');
+  for (let r = 1; r < values.length; r++) {
+    if (String(values[r][kIdx]) === String(key)) {
+      sh.getRange(r + 1, vIdx + 1).setValue((value === undefined || value === null) ? '' : value);
+      invalidateTab(SHEETS.CONFIG);
+      clearConfigMemo_();
+      return;
+    }
+  }
+  appendObject(SHEETS.CONFIG, { key: key, value: value });
+  clearConfigMemo_();
 }

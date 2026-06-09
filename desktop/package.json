@@ -1,0 +1,38 @@
+{
+  "name": "fsw-booking-desktop",
+  "version": "0.1.0",
+  "description": "FSW Booking System — Windows desktop shell (Electron). Signs in with Google in the system browser and talks to the Apps Script JSON API.",
+  "main": "src/main.js",
+  "author": "FSW",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "bundle": "node build/bundle-ui.mjs",
+    "start": "npm run bundle && electron .",
+    "dist": "npm run bundle && electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^31.7.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.fsw.booking",
+    "productName": "FSW Booking",
+    "files": [
+      "src/**/*",
+      "renderer/**/*",
+      "config.example.json",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

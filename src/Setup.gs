@@ -119,6 +119,26 @@ function pickColor_() {
   return palette[n % palette.length];
 }
 
+/**
+ * Register the desktop app's OAuth client ID(s) so token sign-in works, and
+ * optionally restrict sign-in to a single Workspace domain. Writes the Config
+ * tab. Run once from the editor after creating the OAuth client in Google Cloud
+ * (see docs/Desktop-1-Backend-Token-Auth.md). Safe to re-run to update.
+ * @param {string} clientIds one or more OAuth client IDs, comma-separated
+ * @param {string} [allowedDomain] e.g. "fsw.co.uk"; omit/'' for roster-only
+ * @return {string} the stored client IDs
+ */
+function setDesktopAuth(clientIds, allowedDomain) {
+  if (!clientIds || !String(clientIds).trim()) {
+    throw new Error('clientIds is required (the OAuth client ID from Google Cloud).');
+  }
+  setConfig_('oauthClientIds', String(clientIds).trim());
+  if (allowedDomain != null) setConfig_('allowedDomain', String(allowedDomain).trim());
+  Logger.log('✅ Desktop auth configured.\n  oauthClientIds: ' + getConfig('oauthClientIds') +
+             '\n  allowedDomain:  ' + (getConfig('allowedDomain') || '(none — roster check only)'));
+  return getConfig('oauthClientIds');
+}
+
 /** Convenience: log the linked data spreadsheet URL. */
 function getDataSpreadsheetUrl() {
   const url = getSpreadsheet_().getUrl();

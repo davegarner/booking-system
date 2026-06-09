@@ -38,7 +38,14 @@
       "Bash(git add *)",
       "Bash(git commit -q -m 'Add comprehensive project handoff document *)",
       "Bash(git push *)",
-      "Bash(git remote *)"
+      "Bash(git remote *)",
+      "WebFetch(domain:developers.google.com)",
+      "Bash(tools/build-docs.sh docs/Desktop-1-Backend-Token-Auth.md)",
+      "Bash(node build/bundle-ui.mjs)",
+      "Bash(curl -sS -m 8 -o /dev/null -w \"nodejs.org -> HTTP %{http_code}\\\\n\" https://nodejs.org/dist/index.json)"
+    ],
+    "additionalDirectories": [
+      "/Users/david"
     ]
   }
 }

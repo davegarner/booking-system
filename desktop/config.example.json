@@ -1,0 +1,7 @@
+{
+  "_comment": "Copy this file to config.json and fill in the four values. config.json is gitignored. See desktop/README.md and docs/Desktop-2-Electron-Shell.md.",
+  "clientId": "PASTE-OAUTH-DESKTOP-CLIENT-ID.apps.googleusercontent.com",
+  "clientSecret": "PASTE-OAUTH-DESKTOP-CLIENT-SECRET",
+  "execUrl": "https://script.google.com/macros/s/PASTE-DESKTOP-DEPLOYMENT-ID/exec",
+  "allowedDomain": ""
+}

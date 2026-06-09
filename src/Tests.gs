@@ -24,7 +24,8 @@ function runAllTests() {
     test_freeRangesCancelledBookingReopens_,
     test_bookingFitsInFreeRange_,
     test_bookingRespectsBufferGap_,
-    test_bookingExcludeSelfOnReschedule_
+    test_bookingExcludeSelfOnReschedule_,
+    test_apiActionsResolve_
   ];
   let pass = 0; const failures = [];
   tests.forEach(function (t) {
@@ -189,4 +190,21 @@ function test_bookingExcludeSelfOnReschedule_() {
   const dataX = { additions: data.additions, bookings: data.bookings.filter(function (b) { return b.bookingId !== 'B'; }) };
   free = computeFreeRangesFromData(dataX, 'u', s, e, TEST_TZ);
   assert_(meetingFitsFreeRanges_(free, s, e), 'own slot free once B excluded');
+}
+
+/* ------------------------------- desktop JSON API ------------------------- */
+
+function test_apiActionsResolve_() {
+  // Every doPost allow-list entry must resolve to a real function, or the desktop
+  // client would get "Unknown action" at runtime. Pure: just inspects the map.
+  assert_(API_ACTIONS_ && typeof API_ACTIONS_ === 'object', 'API_ACTIONS_ is defined');
+  const names = Object.keys(API_ACTIONS_);
+  assert_(names.length >= 20, 'expected the full public API surface; got ' + names.length);
+  names.forEach(function (n) {
+    assert_(typeof API_ACTIONS_[n] === 'function', 'action "' + n + '" must resolve to a function');
+  });
+  // Spot-check that critical actions are present.
+  ['getBootstrap', 'getServerInfo', 'createBooking', 'getReport', 'getRoster'].forEach(function (n) {
+    assert_(typeof API_ACTIONS_[n] === 'function', 'missing required action: ' + n);
+  });
 }

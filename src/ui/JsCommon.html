@@ -1,9 +1,17 @@
 <script>
   /* JsCommon — shared client helpers and shell wiring. Loaded on every page. */
 
-  /** Promise wrapper around google.script.run. Usage: gcall('getServerInfo', arg1, ...) */
+  /**
+   * Promise wrapper around the server call. Usage: gcall('getServerInfo', arg1, ...)
+   * Browser / Google Sites: routes through google.script.run (Google session auth).
+   * Desktop app (Electron): routes through window.fswApi, which the preload bridges
+   * to the JSON API with a verified Google ID token. Same method names and args.
+   */
   function gcall(method) {
     var args = Array.prototype.slice.call(arguments, 1);
+    if (window.fswApi && typeof window.fswApi.call === 'function') {
+      return window.fswApi.call(method, args); // desktop shell
+    }
     return new Promise(function (resolve, reject) {
       var runner = google.script.run
         .withSuccessHandler(resolve)

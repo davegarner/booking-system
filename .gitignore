@@ -3,6 +3,11 @@ node_modules/
 *.log
 npm-debug.log*
 
+# Desktop app (Electron): generated UI bundle, build output, and local secrets.
+desktop/renderer/
+desktop/dist/
+desktop/config.json
+
 # .clasp.json holds your scriptId (not a secret, but machine-specific).
 # It is created by `clasp create`/`clasp clone`. Commit it if your team shares
 # one script; ignore it if each developer clones their own. Default: ignore.
